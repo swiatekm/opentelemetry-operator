@@ -112,7 +112,11 @@ func UnescapeDollarSignsInPromConfig(cfg string) (map[interface{}]interface{}, e
 	}
 
 	scrapeConfigs, err := getScrapeConfigsFromPromConfig(prometheus)
-	if err != nil {
+	if errors.Is(err, errorNoComponent("prometheusConfig")) || errors.Is(err, errorNoComponent("scrape_configs")) {
+		// if there's simply no Prometheus config or no scrape configs, but the receiver configuration is otherwise
+		// valid, just return without error
+		return prometheus, nil
+	} else if err != nil {
 		return nil, err
 	}
 
@@ -189,24 +193,13 @@ func UnescapeDollarSignsInPromConfig(cfg string) (map[interface{}]interface{}, e
 // from the `scrape_configs` section and adds a single `http_sd_configs` configuration.
 // The `http_sd_configs` points to the TA (Target Allocator) endpoint that provides the list of targets for the given job.
 func AddHTTPSDConfigToPromConfig(prometheus map[interface{}]interface{}, taServiceName string) (map[interface{}]interface{}, error) {
-	prometheusConfigProperty, ok := prometheus["config"]
-	if !ok {
-		return nil, errorNoComponent("prometheusConfig")
-	}
-
-	prometheusConfig, ok := prometheusConfigProperty.(map[interface{}]interface{})
-	if !ok {
-		return nil, errorNotAMap("prometheusConfig")
-	}
-
-	scrapeConfigsProperty, ok := prometheusConfig["scrape_configs"]
-	if !ok {
-		return nil, errorNoComponent("scrape_configs")
-	}
-
-	scrapeConfigs, ok := scrapeConfigsProperty.([]interface{})
-	if !ok {
-		return nil, errorNotAList("scrape_configs")
+	scrapeConfigs, err := getScrapeConfigsFromPromConfig(prometheus)
+	if errors.Is(err, errorNoComponent("prometheusConfig")) || errors.Is(err, errorNoComponent("scrape_configs")) {
+		// if there's simply no Prometheus config or no scrape configs, but the receiver configuration is otherwise
+		// valid, just return without error
+		return prometheus, nil
+	} else if err != nil {
+		return nil, err
 	}
 
 	sdRegex := regexp.MustCompile(`^.*(sd|static)_configs$`)
