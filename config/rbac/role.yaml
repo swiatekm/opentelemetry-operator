@@ -133,6 +133,7 @@ rules:
   - opentelemetry.io
   resources:
   - opampbridges
+  - targetallocators
   verbs:
   - create
   - delete

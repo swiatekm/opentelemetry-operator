@@ -17,6 +17,7 @@ package controllers
 
 import (
 	"context"
+	"slices"
 
 	"github.com/go-logr/logr"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -24,10 +25,16 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	policyV1 "k8s.io/api/policy/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/open-telemetry/opentelemetry-operator/apis/v1alpha1"
 	"github.com/open-telemetry/opentelemetry-operator/apis/v1beta1"
@@ -55,7 +62,11 @@ type TargetAllocatorReconcilerParams struct {
 	Config   config.Config
 }
 
-func (r *TargetAllocatorReconciler) getParams(instance v1alpha1.TargetAllocator) targetallocator.Params {
+func (r *TargetAllocatorReconciler) getParams(ctx context.Context, instance v1alpha1.TargetAllocator) (targetallocator.Params, error) {
+	collector, err := r.getCollector(ctx, instance)
+	if err != nil {
+		return targetallocator.Params{}, err
+	}
 	p := targetallocator.Params{
 		Config:          r.config,
 		Client:          r.Client,
@@ -63,9 +74,28 @@ func (r *TargetAllocatorReconciler) getParams(instance v1alpha1.TargetAllocator)
 		Scheme:          r.scheme,
 		Recorder:        r.recorder,
 		TargetAllocator: instance,
+		Collector:       collector,
 	}
 
-	return p
+	return p, nil
+}
+
+func (r *TargetAllocatorReconciler) getCollector(ctx context.Context, instance v1alpha1.TargetAllocator) (*v1beta1.OpenTelemetryCollector, error) {
+	var collector v1beta1.OpenTelemetryCollector
+	ownerReferences := instance.GetOwnerReferences()
+	collectorIndex := slices.IndexFunc(ownerReferences, func(reference metav1.OwnerReference) bool {
+		return reference.Kind == "OpenTelemetryCollector"
+	})
+	if collectorIndex != -1 {
+		collectorRef := ownerReferences[collectorIndex]
+		collectorKey := client.ObjectKey{Name: collectorRef.Name, Namespace: instance.GetNamespace()}
+		if err := r.Get(ctx, collectorKey, &collector); err != nil {
+			return nil, err
+		}
+		return &collector, nil
+	}
+
+	return nil, nil
 }
 
 // NewTargetAllocatorReconciler creates a new reconciler for TargetAllocator objects.
@@ -121,19 +151,22 @@ func (r *TargetAllocatorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, nil
 	}
 
-	params := r.getParams(instance)
+	params, err := r.getParams(ctx, instance)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 	desiredObjects, buildErr := BuildTargetAllocator(params)
 	if buildErr != nil {
 		return ctrl.Result{}, buildErr
 	}
 
-	err := reconcileDesiredObjects(ctx, r.Client, log, &params.TargetAllocator, params.Scheme, desiredObjects, nil)
+	err = reconcileDesiredObjects(ctx, r.Client, log, &params.TargetAllocator, params.Scheme, desiredObjects, nil)
 	return taStatus.HandleReconcileStatus(ctx, log, params, err)
 }
 
 // SetupWithManager tells the manager what our controller is interested in.
 func (r *TargetAllocatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	builder := ctrl.NewControllerManagedBy(mgr).
+	ctrlBuilder := ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.TargetAllocator{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.ServiceAccount{}).
@@ -144,9 +177,34 @@ func (r *TargetAllocatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&policyV1.PodDisruptionBudget{})
 
 	if featuregate.PrometheusOperatorIsAvailable.IsEnabled() {
-		builder.Owns(&monitoringv1.ServiceMonitor{})
-		builder.Owns(&monitoringv1.PodMonitor{})
+		ctrlBuilder.Owns(&monitoringv1.ServiceMonitor{})
+		ctrlBuilder.Owns(&monitoringv1.PodMonitor{})
 	}
 
-	return builder.Complete(r)
+	// watch collectors which have embedded Target Allocator enabled
+	// we need to do this separately from collector reconciliation, as changes to Config will not lead to changes
+	// in the TargetAllocator CR
+	ctrlBuilder.Watches(
+		&v1beta1.OpenTelemetryCollector{},
+		handler.EnqueueRequestsFromMapFunc(r.getTargetAllocatorForCollector),
+		builder.WithPredicates(
+			predicate.NewPredicateFuncs(func(object client.Object) bool {
+				collector := object.(*v1beta1.OpenTelemetryCollector)
+				return collector.Spec.TargetAllocator.Enabled
+			}),
+		),
+	)
+
+	return ctrlBuilder.Complete(r)
+}
+
+func (r *TargetAllocatorReconciler) getTargetAllocatorForCollector(_ context.Context, collector client.Object) []reconcile.Request {
+	return []reconcile.Request{
+		{
+			NamespacedName: types.NamespacedName{
+				Name:      collector.GetName(),
+				Namespace: collector.GetNamespace(),
+			},
+		},
+	}
 }

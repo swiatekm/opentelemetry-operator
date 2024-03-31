@@ -39,6 +39,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-operator/internal/manifests"
 	"github.com/open-telemetry/opentelemetry-operator/internal/manifests/collector"
 	"github.com/open-telemetry/opentelemetry-operator/internal/manifests/manifestutils"
+	"github.com/open-telemetry/opentelemetry-operator/internal/manifests/targetallocator"
 	"github.com/open-telemetry/opentelemetry-operator/pkg/featuregate"
 )
 
@@ -1199,7 +1200,7 @@ endpoint: ws://opamp-server:4320/v1/opamp
 	}
 }
 
-func TestBuildTargetAllocator(t *testing.T) {
+func TestBuildTargetAllocatorCR(t *testing.T) {
 	var goodConfigYaml = `
 receivers:
   prometheus:
@@ -1465,6 +1466,949 @@ service:
 						Selector: selectorLabels,
 					},
 				},
+				&v1alpha1.TargetAllocator{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test",
+						Namespace: "test",
+						Labels:    nil,
+					},
+					Spec: v1alpha1.TargetAllocatorSpec{
+						FilterStrategy:     v1beta1.TargetAllocatorFilterStrategyRelabelConfig,
+						AllocationStrategy: v1beta1.TargetAllocatorAllocationStrategyConsistentHashing,
+						PrometheusCR: v1beta1.TargetAllocatorPrometheusCR{
+							Enabled: true,
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "enable metrics case",
+			args: args{
+				instance: v1beta1.OpenTelemetryCollector{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test",
+						Namespace: "test",
+					},
+					Spec: v1beta1.OpenTelemetryCollectorSpec{
+						OpenTelemetryCommonFields: v1beta1.OpenTelemetryCommonFields{
+							Image:    "test",
+							Replicas: &one,
+						},
+						Mode:   "statefulset",
+						Config: goodConfig,
+						TargetAllocator: v1beta1.TargetAllocatorEmbedded{
+							Enabled: true,
+							PrometheusCR: v1beta1.TargetAllocatorPrometheusCR{
+								Enabled: true,
+							},
+							FilterStrategy: "relabel-config",
+							Observability: v1beta1.ObservabilitySpec{
+								Metrics: v1beta1.MetricsConfigSpec{
+									EnableMetrics: true,
+								},
+							},
+						},
+					},
+				},
+			},
+			want: []client.Object{
+				&appsv1.StatefulSet{
+					TypeMeta: metav1.TypeMeta{},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-collector",
+						Namespace: "test",
+						Labels: map[string]string{
+							"app.kubernetes.io/component":  "opentelemetry-collector",
+							"app.kubernetes.io/instance":   "test.test",
+							"app.kubernetes.io/managed-by": "opentelemetry-operator",
+							"app.kubernetes.io/name":       "test-collector",
+							"app.kubernetes.io/part-of":    "opentelemetry",
+							"app.kubernetes.io/version":    "latest",
+						},
+						Annotations: map[string]string{},
+					},
+					Spec: appsv1.StatefulSetSpec{
+						ServiceName: "test-collector",
+						Replicas:    &one,
+						Selector: &metav1.LabelSelector{
+							MatchLabels: selectorLabels,
+						},
+						Template: corev1.PodTemplateSpec{
+							ObjectMeta: metav1.ObjectMeta{
+								Labels: map[string]string{
+									"app.kubernetes.io/component":  "opentelemetry-collector",
+									"app.kubernetes.io/instance":   "test.test",
+									"app.kubernetes.io/managed-by": "opentelemetry-operator",
+									"app.kubernetes.io/name":       "test-collector",
+									"app.kubernetes.io/part-of":    "opentelemetry",
+									"app.kubernetes.io/version":    "latest",
+								},
+								Annotations: map[string]string{
+									"opentelemetry-operator-config/sha256": "42773025f65feaf30df59a306a9e38f1aaabe94c8310983beaddb7f648d699b0",
+									"prometheus.io/path":                   "/metrics",
+									"prometheus.io/port":                   "8888",
+									"prometheus.io/scrape":                 "true",
+								},
+							},
+							Spec: corev1.PodSpec{
+								Volumes: []corev1.Volume{
+									{
+										Name: "otc-internal",
+										VolumeSource: corev1.VolumeSource{
+											ConfigMap: &corev1.ConfigMapVolumeSource{
+												LocalObjectReference: corev1.LocalObjectReference{
+													Name: "test-collector-" + goodConfigHash,
+												},
+												Items: []corev1.KeyToPath{
+													{
+														Key:  "collector.yaml",
+														Path: "collector.yaml",
+													},
+												},
+											},
+										},
+									},
+								},
+								Containers: []corev1.Container{
+									{
+										Name:  "otc-container",
+										Image: "test",
+										Args: []string{
+											"--config=/conf/collector.yaml",
+										},
+										Env: []corev1.EnvVar{
+											{
+												Name: "POD_NAME",
+												ValueFrom: &corev1.EnvVarSource{
+													FieldRef: &corev1.ObjectFieldSelector{
+														FieldPath: "metadata.name",
+													},
+												},
+											},
+											{
+												Name:  "SHARD",
+												Value: "0",
+											},
+										},
+										Ports: []corev1.ContainerPort{
+											{
+												Name:          "metrics",
+												HostPort:      0,
+												ContainerPort: 8888,
+												Protocol:      "TCP",
+											},
+										},
+										VolumeMounts: []corev1.VolumeMount{
+											{
+												Name:      "otc-internal",
+												MountPath: "/conf",
+											},
+										},
+									},
+								},
+								ShareProcessNamespace: ptr.To(false),
+								DNSPolicy:             "ClusterFirst",
+								DNSConfig:             &corev1.PodDNSConfig{},
+								ServiceAccountName:    "test-collector",
+							},
+						},
+						PodManagementPolicy: "Parallel",
+					},
+				},
+				&policyV1.PodDisruptionBudget{
+					TypeMeta: metav1.TypeMeta{},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-collector",
+						Namespace: "test",
+						Labels: map[string]string{
+							"app.kubernetes.io/component":  "opentelemetry-collector",
+							"app.kubernetes.io/instance":   "test.test",
+							"app.kubernetes.io/managed-by": "opentelemetry-operator",
+							"app.kubernetes.io/name":       "test-collector",
+							"app.kubernetes.io/part-of":    "opentelemetry",
+							"app.kubernetes.io/version":    "latest",
+						},
+						Annotations: map[string]string{},
+					},
+					Spec: policyV1.PodDisruptionBudgetSpec{
+						Selector: &v1.LabelSelector{
+							MatchLabels: map[string]string{
+								"app.kubernetes.io/component":  "opentelemetry-collector",
+								"app.kubernetes.io/instance":   "test.test",
+								"app.kubernetes.io/managed-by": "opentelemetry-operator",
+								"app.kubernetes.io/name":       "test-collector",
+								"app.kubernetes.io/part-of":    "opentelemetry",
+								"app.kubernetes.io/version":    "latest",
+							},
+						},
+						MaxUnavailable: &intstr.IntOrString{
+							Type:   intstr.Int,
+							IntVal: 1,
+						},
+					},
+				},
+				&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-collector-" + goodConfigHash,
+						Namespace: "test",
+						Labels: map[string]string{
+							"app.kubernetes.io/component":  "opentelemetry-collector",
+							"app.kubernetes.io/instance":   "test.test",
+							"app.kubernetes.io/managed-by": "opentelemetry-operator",
+							"app.kubernetes.io/name":       "test-collector",
+							"app.kubernetes.io/part-of":    "opentelemetry",
+							"app.kubernetes.io/version":    "latest",
+						},
+						Annotations: map[string]string{},
+					},
+					Data: map[string]string{
+						"collector.yaml": "exporters:\n    debug: null\nreceivers:\n    prometheus:\n        config: {}\n        target_allocator:\n            collector_id: ${POD_NAME}\n            endpoint: http://test-targetallocator:80\n            interval: 30s\nservice:\n    pipelines:\n        metrics:\n            exporters:\n                - debug\n            receivers:\n                - prometheus\n",
+					},
+				},
+				&corev1.ServiceAccount{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-collector",
+						Namespace: "test",
+						Labels: map[string]string{
+							"app.kubernetes.io/component":  "opentelemetry-collector",
+							"app.kubernetes.io/instance":   "test.test",
+							"app.kubernetes.io/managed-by": "opentelemetry-operator",
+							"app.kubernetes.io/name":       "test-collector",
+							"app.kubernetes.io/part-of":    "opentelemetry",
+							"app.kubernetes.io/version":    "latest",
+						},
+						Annotations: map[string]string{},
+					},
+				},
+				&corev1.Service{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-collector-monitoring",
+						Namespace: "test",
+						Labels: map[string]string{
+							"app.kubernetes.io/component":                            "opentelemetry-collector",
+							"app.kubernetes.io/instance":                             "test.test",
+							"app.kubernetes.io/managed-by":                           "opentelemetry-operator",
+							"app.kubernetes.io/name":                                 "test-collector-monitoring",
+							"app.kubernetes.io/part-of":                              "opentelemetry",
+							"app.kubernetes.io/version":                              "latest",
+							"operator.opentelemetry.io/collector-service-type":       "monitoring",
+							"operator.opentelemetry.io/collector-monitoring-service": "Exists",
+						},
+						Annotations: map[string]string{},
+					},
+					Spec: corev1.ServiceSpec{
+						Ports: []corev1.ServicePort{
+							{
+								Name: "monitoring",
+								Port: 8888,
+							},
+						},
+						Selector: selectorLabels,
+					},
+				},
+				&v1alpha1.TargetAllocator{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test",
+						Namespace: "test",
+						Labels:    nil,
+					},
+					Spec: v1alpha1.TargetAllocatorSpec{
+						FilterStrategy: v1beta1.TargetAllocatorFilterStrategyRelabelConfig,
+						PrometheusCR: v1beta1.TargetAllocatorPrometheusCR{
+							Enabled: true,
+						},
+						Observability: v1beta1.ObservabilitySpec{
+							Metrics: v1beta1.MetricsConfigSpec{
+								EnableMetrics: true,
+							},
+						},
+					},
+				},
+			},
+			wantErr:      false,
+			featuregates: []string{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.New(
+				config.WithCollectorImage("default-collector"),
+				config.WithTargetAllocatorImage("default-ta-allocator"),
+			)
+			params := manifests.Params{
+				Log:     logr.Discard(),
+				Config:  cfg,
+				OtelCol: tt.args.instance,
+			}
+			targetAllocator, err := collector.TargetAllocator(params)
+			require.NoError(t, err)
+			params.TargetAllocator = targetAllocator
+			if len(tt.featuregates) > 0 {
+				fg := strings.Join(tt.featuregates, ",")
+				flagset := featuregate.Flags(colfeaturegate.GlobalRegistry())
+				if err = flagset.Set(featuregate.FeatureGatesFlag, fg); err != nil {
+					t.Errorf("featuregate setting error = %v", err)
+					return
+				}
+			}
+			got, err := BuildCollector(params)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("BuildAll() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			require.Equal(t, tt.want, got)
+
+		})
+	}
+}
+
+func TestBuildTargetAllocator(t *testing.T) {
+	type args struct {
+		instance  v1alpha1.TargetAllocator
+		collector *v1beta1.OpenTelemetryCollector
+	}
+	tests := []struct {
+		name         string
+		args         args
+		want         []client.Object
+		featuregates []string
+		wantErr      bool
+	}{
+		{
+			name: "base case",
+			args: args{
+				instance: v1alpha1.TargetAllocator{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test",
+						Namespace: "test",
+						Labels:    nil,
+					},
+					Spec: v1alpha1.TargetAllocatorSpec{
+						FilterStrategy: v1beta1.TargetAllocatorFilterStrategyRelabelConfig,
+						ScrapeConfigs: []v1beta1.AnyConfig{
+							{Object: map[string]any{
+								"job_name": "example",
+								"metric_relabel_configs": []any{
+									map[string]any{
+										"replacement":   "$1_$2",
+										"source_labels": []any{"job"},
+										"target_label":  "job",
+									},
+								},
+								"relabel_configs": []any{
+									map[string]any{
+										"replacement":   "my_service_$1",
+										"source_labels": []any{"__meta_service_id"},
+										"target_label":  "job",
+									},
+									map[string]any{
+										"replacement":   "$1",
+										"source_labels": []any{"__meta_service_name"},
+										"target_label":  "instance",
+									},
+								},
+							}},
+						},
+						PrometheusCR: v1beta1.TargetAllocatorPrometheusCR{
+							Enabled: true,
+						},
+					},
+				},
+			},
+			want: []client.Object{
+				&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-targetallocator",
+						Namespace: "test",
+						Labels: map[string]string{
+							"app.kubernetes.io/component":  "opentelemetry-targetallocator",
+							"app.kubernetes.io/instance":   "test.test",
+							"app.kubernetes.io/managed-by": "opentelemetry-operator",
+							"app.kubernetes.io/name":       "test-targetallocator",
+							"app.kubernetes.io/part-of":    "opentelemetry",
+							"app.kubernetes.io/version":    "latest",
+						},
+						Annotations: nil,
+					},
+					Data: map[string]string{
+						"targetallocator.yaml": `allocation_strategy: consistent-hashing
+collector_selector: null
+config:
+  scrape_configs:
+  - job_name: example
+    metric_relabel_configs:
+    - replacement: $1_$2
+      source_labels:
+      - job
+      target_label: job
+    relabel_configs:
+    - replacement: my_service_$1
+      source_labels:
+      - __meta_service_id
+      target_label: job
+    - replacement: $1
+      source_labels:
+      - __meta_service_name
+      target_label: instance
+filter_strategy: relabel-config
+prometheus_cr:
+  enabled: true
+  pod_monitor_selector: null
+  service_monitor_selector: null
+`,
+					},
+				},
+				&appsv1.Deployment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-targetallocator",
+						Namespace: "test",
+						Labels: map[string]string{
+							"app.kubernetes.io/component":  "opentelemetry-targetallocator",
+							"app.kubernetes.io/instance":   "test.test",
+							"app.kubernetes.io/managed-by": "opentelemetry-operator",
+							"app.kubernetes.io/name":       "test-targetallocator",
+							"app.kubernetes.io/part-of":    "opentelemetry",
+							"app.kubernetes.io/version":    "latest",
+						},
+						Annotations: nil,
+					},
+					Spec: appsv1.DeploymentSpec{
+						Selector: &metav1.LabelSelector{
+							MatchLabels: taSelectorLabels,
+						},
+						Template: corev1.PodTemplateSpec{
+							ObjectMeta: metav1.ObjectMeta{
+								Labels: map[string]string{
+									"app.kubernetes.io/component":  "opentelemetry-targetallocator",
+									"app.kubernetes.io/instance":   "test.test",
+									"app.kubernetes.io/managed-by": "opentelemetry-operator",
+									"app.kubernetes.io/name":       "test-targetallocator",
+									"app.kubernetes.io/part-of":    "opentelemetry",
+									"app.kubernetes.io/version":    "latest",
+								},
+								Annotations: map[string]string{
+									"opentelemetry-targetallocator-config/hash": "88ab06aab167d58ae2316ddecc9cf0600b9094d27054781dd6aa6e44dcf902fc",
+								},
+							},
+							Spec: corev1.PodSpec{
+								Volumes: []corev1.Volume{
+									{
+										Name: "ta-internal",
+										VolumeSource: corev1.VolumeSource{
+											ConfigMap: &corev1.ConfigMapVolumeSource{
+												LocalObjectReference: corev1.LocalObjectReference{
+													Name: "test-targetallocator",
+												},
+												Items: []corev1.KeyToPath{
+													{
+														Key:  "targetallocator.yaml",
+														Path: "targetallocator.yaml",
+													},
+												},
+											},
+										},
+									},
+								},
+								Containers: []corev1.Container{
+									{
+										Name:  "ta-container",
+										Image: "default-ta-allocator",
+										Env: []corev1.EnvVar{
+											{
+												Name: "OTELCOL_NAMESPACE",
+												ValueFrom: &corev1.EnvVarSource{
+													FieldRef: &corev1.ObjectFieldSelector{
+														FieldPath: "metadata.namespace",
+													},
+												},
+											},
+										},
+										Ports: []corev1.ContainerPort{
+											{
+												Name:          "http",
+												HostPort:      0,
+												ContainerPort: 8080,
+												Protocol:      "TCP",
+											},
+										},
+										VolumeMounts: []corev1.VolumeMount{
+											{
+												Name:      "ta-internal",
+												MountPath: "/conf",
+											},
+										},
+										LivenessProbe: &corev1.Probe{
+											ProbeHandler: corev1.ProbeHandler{
+												HTTPGet: &corev1.HTTPGetAction{
+													Path: "/livez",
+													Port: intstr.FromInt(8080),
+												},
+											},
+										},
+										ReadinessProbe: &corev1.Probe{
+											ProbeHandler: corev1.ProbeHandler{
+												HTTPGet: &corev1.HTTPGetAction{
+													Path: "/readyz",
+													Port: intstr.FromInt(8080),
+												},
+											},
+										},
+									},
+								},
+								DNSPolicy:             "ClusterFirst",
+								DNSConfig:             &corev1.PodDNSConfig{},
+								ShareProcessNamespace: ptr.To(false),
+								ServiceAccountName:    "test-targetallocator",
+							},
+						},
+					},
+				},
+				&corev1.ServiceAccount{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-targetallocator",
+						Namespace: "test",
+						Labels: map[string]string{
+							"app.kubernetes.io/component":  "opentelemetry-targetallocator",
+							"app.kubernetes.io/instance":   "test.test",
+							"app.kubernetes.io/managed-by": "opentelemetry-operator",
+							"app.kubernetes.io/name":       "test-targetallocator",
+							"app.kubernetes.io/part-of":    "opentelemetry",
+							"app.kubernetes.io/version":    "latest",
+						},
+					},
+				},
+				&corev1.Service{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-targetallocator",
+						Namespace: "test",
+						Labels: map[string]string{
+							"app.kubernetes.io/component":  "opentelemetry-targetallocator",
+							"app.kubernetes.io/instance":   "test.test",
+							"app.kubernetes.io/managed-by": "opentelemetry-operator",
+							"app.kubernetes.io/name":       "test-targetallocator",
+							"app.kubernetes.io/part-of":    "opentelemetry",
+							"app.kubernetes.io/version":    "latest",
+						},
+						Annotations: nil,
+					},
+					Spec: corev1.ServiceSpec{
+						Ports: []corev1.ServicePort{
+							{
+								Name: "targetallocation",
+								Port: 80,
+								TargetPort: intstr.IntOrString{
+									Type:   1,
+									StrVal: "http",
+								},
+							},
+						},
+						Selector: taSelectorLabels,
+					},
+				},
+				&policyV1.PodDisruptionBudget{
+					TypeMeta: metav1.TypeMeta{},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-targetallocator",
+						Namespace: "test",
+						Labels: map[string]string{
+							"app.kubernetes.io/component":  "opentelemetry-targetallocator",
+							"app.kubernetes.io/instance":   "test.test",
+							"app.kubernetes.io/managed-by": "opentelemetry-operator",
+							"app.kubernetes.io/name":       "test-targetallocator",
+							"app.kubernetes.io/part-of":    "opentelemetry",
+							"app.kubernetes.io/version":    "latest",
+						},
+						Annotations: map[string]string{
+							"opentelemetry-targetallocator-config/hash": "88ab06aab167d58ae2316ddecc9cf0600b9094d27054781dd6aa6e44dcf902fc",
+						},
+					},
+					Spec: policyV1.PodDisruptionBudgetSpec{
+						Selector: &v1.LabelSelector{
+							MatchLabels: map[string]string{
+								"app.kubernetes.io/component":  "opentelemetry-targetallocator",
+								"app.kubernetes.io/instance":   "test.test",
+								"app.kubernetes.io/managed-by": "opentelemetry-operator",
+								"app.kubernetes.io/name":       "test-targetallocator",
+								"app.kubernetes.io/part-of":    "opentelemetry",
+							},
+						},
+						MaxUnavailable: &intstr.IntOrString{
+							Type:   intstr.Int,
+							IntVal: 1,
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "enable metrics case",
+			args: args{
+				instance: v1alpha1.TargetAllocator{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test",
+						Namespace: "test",
+						Labels:    nil,
+					},
+					Spec: v1alpha1.TargetAllocatorSpec{
+						FilterStrategy: v1beta1.TargetAllocatorFilterStrategyRelabelConfig,
+						ScrapeConfigs: []v1beta1.AnyConfig{
+							{Object: map[string]any{
+								"job_name": "example",
+								"metric_relabel_configs": []any{
+									map[string]any{
+										"replacement":   "$1_$2",
+										"source_labels": []any{"job"},
+										"target_label":  "job",
+									},
+								},
+								"relabel_configs": []any{
+									map[string]any{
+										"replacement":   "my_service_$1",
+										"source_labels": []any{"__meta_service_id"},
+										"target_label":  "job",
+									},
+									map[string]any{
+										"replacement":   "$1",
+										"source_labels": []any{"__meta_service_name"},
+										"target_label":  "instance",
+									},
+								},
+							}},
+						},
+						PrometheusCR: v1beta1.TargetAllocatorPrometheusCR{
+							Enabled: true,
+						},
+						AllocationStrategy: v1beta1.TargetAllocatorAllocationStrategyConsistentHashing,
+						Observability: v1beta1.ObservabilitySpec{
+							Metrics: v1beta1.MetricsConfigSpec{
+								EnableMetrics: true,
+							},
+						},
+					},
+				},
+			},
+			want: []client.Object{
+				&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-targetallocator",
+						Namespace: "test",
+						Labels: map[string]string{
+							"app.kubernetes.io/component":  "opentelemetry-targetallocator",
+							"app.kubernetes.io/instance":   "test.test",
+							"app.kubernetes.io/managed-by": "opentelemetry-operator",
+							"app.kubernetes.io/name":       "test-targetallocator",
+							"app.kubernetes.io/part-of":    "opentelemetry",
+							"app.kubernetes.io/version":    "latest",
+						},
+						Annotations: nil,
+					},
+					Data: map[string]string{
+						"targetallocator.yaml": `allocation_strategy: consistent-hashing
+collector_selector: null
+config:
+  scrape_configs:
+  - job_name: example
+    metric_relabel_configs:
+    - replacement: $1_$2
+      source_labels:
+      - job
+      target_label: job
+    relabel_configs:
+    - replacement: my_service_$1
+      source_labels:
+      - __meta_service_id
+      target_label: job
+    - replacement: $1
+      source_labels:
+      - __meta_service_name
+      target_label: instance
+filter_strategy: relabel-config
+prometheus_cr:
+  enabled: true
+  pod_monitor_selector: null
+  service_monitor_selector: null
+`,
+					},
+				},
+				&appsv1.Deployment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-targetallocator",
+						Namespace: "test",
+						Labels: map[string]string{
+							"app.kubernetes.io/component":  "opentelemetry-targetallocator",
+							"app.kubernetes.io/instance":   "test.test",
+							"app.kubernetes.io/managed-by": "opentelemetry-operator",
+							"app.kubernetes.io/name":       "test-targetallocator",
+							"app.kubernetes.io/part-of":    "opentelemetry",
+							"app.kubernetes.io/version":    "latest",
+						},
+						Annotations: nil,
+					},
+					Spec: appsv1.DeploymentSpec{
+						Selector: &metav1.LabelSelector{
+							MatchLabels: taSelectorLabels,
+						},
+						Template: corev1.PodTemplateSpec{
+							ObjectMeta: metav1.ObjectMeta{
+								Labels: map[string]string{
+									"app.kubernetes.io/component":  "opentelemetry-targetallocator",
+									"app.kubernetes.io/instance":   "test.test",
+									"app.kubernetes.io/managed-by": "opentelemetry-operator",
+									"app.kubernetes.io/name":       "test-targetallocator",
+									"app.kubernetes.io/part-of":    "opentelemetry",
+									"app.kubernetes.io/version":    "latest",
+								},
+								Annotations: map[string]string{
+									"opentelemetry-targetallocator-config/hash": "88ab06aab167d58ae2316ddecc9cf0600b9094d27054781dd6aa6e44dcf902fc",
+								},
+							},
+							Spec: corev1.PodSpec{
+								Volumes: []corev1.Volume{
+									{
+										Name: "ta-internal",
+										VolumeSource: corev1.VolumeSource{
+											ConfigMap: &corev1.ConfigMapVolumeSource{
+												LocalObjectReference: corev1.LocalObjectReference{
+													Name: "test-targetallocator",
+												},
+												Items: []corev1.KeyToPath{
+													{
+														Key:  "targetallocator.yaml",
+														Path: "targetallocator.yaml",
+													},
+												},
+											},
+										},
+									},
+								},
+								Containers: []corev1.Container{
+									{
+										Name:  "ta-container",
+										Image: "default-ta-allocator",
+										Env: []corev1.EnvVar{
+											{
+												Name: "OTELCOL_NAMESPACE",
+												ValueFrom: &corev1.EnvVarSource{
+													FieldRef: &corev1.ObjectFieldSelector{
+														FieldPath: "metadata.namespace",
+													},
+												},
+											},
+										},
+										Ports: []corev1.ContainerPort{
+											{
+												Name:          "http",
+												HostPort:      0,
+												ContainerPort: 8080,
+												Protocol:      "TCP",
+											},
+										},
+										VolumeMounts: []corev1.VolumeMount{
+											{
+												Name:      "ta-internal",
+												MountPath: "/conf",
+											},
+										},
+										LivenessProbe: &corev1.Probe{
+											ProbeHandler: corev1.ProbeHandler{
+												HTTPGet: &corev1.HTTPGetAction{
+													Path: "/livez",
+													Port: intstr.FromInt(8080),
+												},
+											},
+										},
+										ReadinessProbe: &corev1.Probe{
+											ProbeHandler: corev1.ProbeHandler{
+												HTTPGet: &corev1.HTTPGetAction{
+													Path: "/readyz",
+													Port: intstr.FromInt(8080),
+												},
+											},
+										},
+									},
+								},
+								ShareProcessNamespace: ptr.To(false),
+								DNSPolicy:             "ClusterFirst",
+								DNSConfig:             &corev1.PodDNSConfig{},
+								ServiceAccountName:    "test-targetallocator",
+							},
+						},
+					},
+				},
+				&corev1.ServiceAccount{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-targetallocator",
+						Namespace: "test",
+						Labels: map[string]string{
+							"app.kubernetes.io/component":  "opentelemetry-targetallocator",
+							"app.kubernetes.io/instance":   "test.test",
+							"app.kubernetes.io/managed-by": "opentelemetry-operator",
+							"app.kubernetes.io/name":       "test-targetallocator",
+							"app.kubernetes.io/part-of":    "opentelemetry",
+							"app.kubernetes.io/version":    "latest",
+						},
+					},
+				},
+				&corev1.Service{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-targetallocator",
+						Namespace: "test",
+						Labels: map[string]string{
+							"app.kubernetes.io/component":  "opentelemetry-targetallocator",
+							"app.kubernetes.io/instance":   "test.test",
+							"app.kubernetes.io/managed-by": "opentelemetry-operator",
+							"app.kubernetes.io/name":       "test-targetallocator",
+							"app.kubernetes.io/part-of":    "opentelemetry",
+							"app.kubernetes.io/version":    "latest",
+						},
+						Annotations: nil,
+					},
+					Spec: corev1.ServiceSpec{
+						Ports: []corev1.ServicePort{
+							{
+								Name: "targetallocation",
+								Port: 80,
+								TargetPort: intstr.IntOrString{
+									Type:   1,
+									StrVal: "http",
+								},
+							},
+						},
+						Selector: taSelectorLabels,
+					},
+				},
+				&policyV1.PodDisruptionBudget{
+					TypeMeta: metav1.TypeMeta{},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-targetallocator",
+						Namespace: "test",
+						Labels: map[string]string{
+							"app.kubernetes.io/component":  "opentelemetry-targetallocator",
+							"app.kubernetes.io/instance":   "test.test",
+							"app.kubernetes.io/managed-by": "opentelemetry-operator",
+							"app.kubernetes.io/name":       "test-targetallocator",
+							"app.kubernetes.io/part-of":    "opentelemetry",
+							"app.kubernetes.io/version":    "latest",
+						},
+						Annotations: map[string]string{
+							"opentelemetry-targetallocator-config/hash": "88ab06aab167d58ae2316ddecc9cf0600b9094d27054781dd6aa6e44dcf902fc",
+						},
+					},
+					Spec: policyV1.PodDisruptionBudgetSpec{
+						Selector: &v1.LabelSelector{
+							MatchLabels: map[string]string{
+								"app.kubernetes.io/component":  "opentelemetry-targetallocator",
+								"app.kubernetes.io/instance":   "test.test",
+								"app.kubernetes.io/managed-by": "opentelemetry-operator",
+								"app.kubernetes.io/name":       "test-targetallocator",
+								"app.kubernetes.io/part-of":    "opentelemetry",
+							},
+						},
+						MaxUnavailable: &intstr.IntOrString{
+							Type:   intstr.Int,
+							IntVal: 1,
+						},
+					},
+				},
+				&monitoringv1.ServiceMonitor{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-targetallocator",
+						Namespace: "test",
+						Labels: map[string]string{
+							"app.kubernetes.io/component":  "opentelemetry-targetallocator",
+							"app.kubernetes.io/instance":   "test.test",
+							"app.kubernetes.io/managed-by": "opentelemetry-operator",
+							"app.kubernetes.io/name":       "test-targetallocator",
+							"app.kubernetes.io/part-of":    "opentelemetry",
+							"app.kubernetes.io/version":    "latest",
+						},
+						Annotations: nil,
+					},
+					Spec: monitoringv1.ServiceMonitorSpec{
+						Endpoints: []monitoringv1.Endpoint{
+							{Port: "targetallocation"},
+						},
+						Selector: v1.LabelSelector{
+							MatchLabels: map[string]string{
+								"app.kubernetes.io/component":  "opentelemetry-targetallocator",
+								"app.kubernetes.io/instance":   "test.test",
+								"app.kubernetes.io/managed-by": "opentelemetry-operator",
+								"app.kubernetes.io/name":       "test-targetallocator",
+								"app.kubernetes.io/part-of":    "opentelemetry",
+							},
+						},
+						NamespaceSelector: monitoringv1.NamespaceSelector{
+							MatchNames: []string{"test"},
+						},
+					},
+				},
+			},
+			wantErr:      false,
+			featuregates: []string{},
+		},
+		{
+			name: "collector present",
+			args: args{
+				instance: v1alpha1.TargetAllocator{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test",
+						Namespace: "test",
+						Labels:    nil,
+					},
+					Spec: v1alpha1.TargetAllocatorSpec{
+						FilterStrategy: v1beta1.TargetAllocatorFilterStrategyRelabelConfig,
+						PrometheusCR: v1beta1.TargetAllocatorPrometheusCR{
+							Enabled: true,
+						},
+					},
+				},
+				collector: &v1beta1.OpenTelemetryCollector{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test",
+						Namespace: "test",
+					},
+					Spec: v1beta1.OpenTelemetryCollectorSpec{
+						Config: v1beta1.Config{
+							Receivers: v1beta1.AnyConfig{
+								Object: map[string]any{
+									"prometheus": map[string]any{
+										"config": map[string]any{
+											"scrape_configs": []any{
+												map[string]any{
+													"job_name": "example",
+													"metric_relabel_configs": []any{
+														map[string]any{
+															"replacement":   "$1_$2",
+															"source_labels": []any{"job"},
+															"target_label":  "job",
+														},
+													},
+													"relabel_configs": []any{
+														map[string]any{
+															"replacement":   "my_service_$1",
+															"source_labels": []any{"__meta_service_id"},
+															"target_label":  "job",
+														},
+														map[string]any{
+															"replacement":   "$1",
+															"source_labels": []any{"__meta_service_name"},
+															"target_label":  "instance",
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			want: []client.Object{
 				&corev1.ConfigMap{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "test-targetallocator",
@@ -1696,496 +2640,6 @@ prometheus_cr:
 			},
 			wantErr: false,
 		},
-		{
-			name: "enable metrics case",
-			args: args{
-				instance: v1beta1.OpenTelemetryCollector{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test",
-						Namespace: "test",
-					},
-					Spec: v1beta1.OpenTelemetryCollectorSpec{
-						OpenTelemetryCommonFields: v1beta1.OpenTelemetryCommonFields{
-							Image:    "test",
-							Replicas: &one,
-						},
-						Mode:   "statefulset",
-						Config: goodConfig,
-						TargetAllocator: v1beta1.TargetAllocatorEmbedded{
-							Enabled: true,
-							PrometheusCR: v1beta1.TargetAllocatorPrometheusCR{
-								Enabled: true,
-							},
-							AllocationStrategy: v1beta1.TargetAllocatorAllocationStrategyConsistentHashing,
-							FilterStrategy:     "relabel-config",
-							Observability: v1beta1.ObservabilitySpec{
-								Metrics: v1beta1.MetricsConfigSpec{
-									EnableMetrics: true,
-								},
-							},
-						},
-					},
-				},
-			},
-			want: []client.Object{
-				&appsv1.StatefulSet{
-					TypeMeta: metav1.TypeMeta{},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-collector",
-						Namespace: "test",
-						Labels: map[string]string{
-							"app.kubernetes.io/component":  "opentelemetry-collector",
-							"app.kubernetes.io/instance":   "test.test",
-							"app.kubernetes.io/managed-by": "opentelemetry-operator",
-							"app.kubernetes.io/name":       "test-collector",
-							"app.kubernetes.io/part-of":    "opentelemetry",
-							"app.kubernetes.io/version":    "latest",
-						},
-						Annotations: map[string]string{},
-					},
-					Spec: appsv1.StatefulSetSpec{
-						ServiceName: "test-collector",
-						Replicas:    &one,
-						Selector: &metav1.LabelSelector{
-							MatchLabels: selectorLabels,
-						},
-						Template: corev1.PodTemplateSpec{
-							ObjectMeta: metav1.ObjectMeta{
-								Labels: map[string]string{
-									"app.kubernetes.io/component":  "opentelemetry-collector",
-									"app.kubernetes.io/instance":   "test.test",
-									"app.kubernetes.io/managed-by": "opentelemetry-operator",
-									"app.kubernetes.io/name":       "test-collector",
-									"app.kubernetes.io/part-of":    "opentelemetry",
-									"app.kubernetes.io/version":    "latest",
-								},
-								Annotations: map[string]string{
-									"opentelemetry-operator-config/sha256": "42773025f65feaf30df59a306a9e38f1aaabe94c8310983beaddb7f648d699b0",
-									"prometheus.io/path":                   "/metrics",
-									"prometheus.io/port":                   "8888",
-									"prometheus.io/scrape":                 "true",
-								},
-							},
-							Spec: corev1.PodSpec{
-								Volumes: []corev1.Volume{
-									{
-										Name: "otc-internal",
-										VolumeSource: corev1.VolumeSource{
-											ConfigMap: &corev1.ConfigMapVolumeSource{
-												LocalObjectReference: corev1.LocalObjectReference{
-													Name: "test-collector-" + goodConfigHash,
-												},
-												Items: []corev1.KeyToPath{
-													{
-														Key:  "collector.yaml",
-														Path: "collector.yaml",
-													},
-												},
-											},
-										},
-									},
-								},
-								Containers: []corev1.Container{
-									{
-										Name:  "otc-container",
-										Image: "test",
-										Args: []string{
-											"--config=/conf/collector.yaml",
-										},
-										Env: []corev1.EnvVar{
-											{
-												Name: "POD_NAME",
-												ValueFrom: &corev1.EnvVarSource{
-													FieldRef: &corev1.ObjectFieldSelector{
-														FieldPath: "metadata.name",
-													},
-												},
-											},
-											{
-												Name:  "SHARD",
-												Value: "0",
-											},
-										},
-										Ports: []corev1.ContainerPort{
-											{
-												Name:          "metrics",
-												HostPort:      0,
-												ContainerPort: 8888,
-												Protocol:      "TCP",
-											},
-										},
-										VolumeMounts: []corev1.VolumeMount{
-											{
-												Name:      "otc-internal",
-												MountPath: "/conf",
-											},
-										},
-									},
-								},
-								ShareProcessNamespace: ptr.To(false),
-								DNSPolicy:             "ClusterFirst",
-								DNSConfig:             &corev1.PodDNSConfig{},
-								ServiceAccountName:    "test-collector",
-							},
-						},
-						PodManagementPolicy: "Parallel",
-					},
-				},
-				&policyV1.PodDisruptionBudget{
-					TypeMeta: metav1.TypeMeta{},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-collector",
-						Namespace: "test",
-						Labels: map[string]string{
-							"app.kubernetes.io/component":  "opentelemetry-collector",
-							"app.kubernetes.io/instance":   "test.test",
-							"app.kubernetes.io/managed-by": "opentelemetry-operator",
-							"app.kubernetes.io/name":       "test-collector",
-							"app.kubernetes.io/part-of":    "opentelemetry",
-							"app.kubernetes.io/version":    "latest",
-						},
-						Annotations: map[string]string{},
-					},
-					Spec: policyV1.PodDisruptionBudgetSpec{
-						Selector: &v1.LabelSelector{
-							MatchLabels: map[string]string{
-								"app.kubernetes.io/component":  "opentelemetry-collector",
-								"app.kubernetes.io/instance":   "test.test",
-								"app.kubernetes.io/managed-by": "opentelemetry-operator",
-								"app.kubernetes.io/name":       "test-collector",
-								"app.kubernetes.io/part-of":    "opentelemetry",
-								"app.kubernetes.io/version":    "latest",
-							},
-						},
-						MaxUnavailable: &intstr.IntOrString{
-							Type:   intstr.Int,
-							IntVal: 1,
-						},
-					},
-				},
-				&corev1.ConfigMap{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-collector-" + goodConfigHash,
-						Namespace: "test",
-						Labels: map[string]string{
-							"app.kubernetes.io/component":  "opentelemetry-collector",
-							"app.kubernetes.io/instance":   "test.test",
-							"app.kubernetes.io/managed-by": "opentelemetry-operator",
-							"app.kubernetes.io/name":       "test-collector",
-							"app.kubernetes.io/part-of":    "opentelemetry",
-							"app.kubernetes.io/version":    "latest",
-						},
-						Annotations: map[string]string{},
-					},
-					Data: map[string]string{
-						"collector.yaml": "exporters:\n    debug: null\nreceivers:\n    prometheus:\n        config: {}\n        target_allocator:\n            collector_id: ${POD_NAME}\n            endpoint: http://test-targetallocator:80\n            interval: 30s\nservice:\n    pipelines:\n        metrics:\n            exporters:\n                - debug\n            receivers:\n                - prometheus\n",
-					},
-				},
-				&corev1.ServiceAccount{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-collector",
-						Namespace: "test",
-						Labels: map[string]string{
-							"app.kubernetes.io/component":  "opentelemetry-collector",
-							"app.kubernetes.io/instance":   "test.test",
-							"app.kubernetes.io/managed-by": "opentelemetry-operator",
-							"app.kubernetes.io/name":       "test-collector",
-							"app.kubernetes.io/part-of":    "opentelemetry",
-							"app.kubernetes.io/version":    "latest",
-						},
-						Annotations: map[string]string{},
-					},
-				},
-				&corev1.Service{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-collector-monitoring",
-						Namespace: "test",
-						Labels: map[string]string{
-							"app.kubernetes.io/component":                            "opentelemetry-collector",
-							"app.kubernetes.io/instance":                             "test.test",
-							"app.kubernetes.io/managed-by":                           "opentelemetry-operator",
-							"app.kubernetes.io/name":                                 "test-collector-monitoring",
-							"app.kubernetes.io/part-of":                              "opentelemetry",
-							"app.kubernetes.io/version":                              "latest",
-							"operator.opentelemetry.io/collector-service-type":       "monitoring",
-							"operator.opentelemetry.io/collector-monitoring-service": "Exists",
-						},
-						Annotations: map[string]string{},
-					},
-					Spec: corev1.ServiceSpec{
-						Ports: []corev1.ServicePort{
-							{
-								Name: "monitoring",
-								Port: 8888,
-							},
-						},
-						Selector: selectorLabels,
-					},
-				},
-				&corev1.ConfigMap{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-targetallocator",
-						Namespace: "test",
-						Labels: map[string]string{
-							"app.kubernetes.io/component":  "opentelemetry-targetallocator",
-							"app.kubernetes.io/instance":   "test.test",
-							"app.kubernetes.io/managed-by": "opentelemetry-operator",
-							"app.kubernetes.io/name":       "test-targetallocator",
-							"app.kubernetes.io/part-of":    "opentelemetry",
-							"app.kubernetes.io/version":    "latest",
-						},
-						Annotations: nil,
-					},
-					Data: map[string]string{
-						"targetallocator.yaml": `allocation_strategy: consistent-hashing
-collector_selector:
-  matchlabels:
-    app.kubernetes.io/component: opentelemetry-collector
-    app.kubernetes.io/instance: test.test
-    app.kubernetes.io/managed-by: opentelemetry-operator
-    app.kubernetes.io/part-of: opentelemetry
-  matchexpressions: []
-config:
-  scrape_configs:
-  - job_name: example
-    metric_relabel_configs:
-    - replacement: $1_$2
-      source_labels:
-      - job
-      target_label: job
-    relabel_configs:
-    - replacement: my_service_$1
-      source_labels:
-      - __meta_service_id
-      target_label: job
-    - replacement: $1
-      source_labels:
-      - __meta_service_name
-      target_label: instance
-filter_strategy: relabel-config
-prometheus_cr:
-  enabled: true
-  pod_monitor_selector: null
-  service_monitor_selector: null
-`,
-					},
-				},
-				&appsv1.Deployment{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-targetallocator",
-						Namespace: "test",
-						Labels: map[string]string{
-							"app.kubernetes.io/component":  "opentelemetry-targetallocator",
-							"app.kubernetes.io/instance":   "test.test",
-							"app.kubernetes.io/managed-by": "opentelemetry-operator",
-							"app.kubernetes.io/name":       "test-targetallocator",
-							"app.kubernetes.io/part-of":    "opentelemetry",
-							"app.kubernetes.io/version":    "latest",
-						},
-						Annotations: nil,
-					},
-					Spec: appsv1.DeploymentSpec{
-						Selector: &metav1.LabelSelector{
-							MatchLabels: taSelectorLabels,
-						},
-						Template: corev1.PodTemplateSpec{
-							ObjectMeta: metav1.ObjectMeta{
-								Labels: map[string]string{
-									"app.kubernetes.io/component":  "opentelemetry-targetallocator",
-									"app.kubernetes.io/instance":   "test.test",
-									"app.kubernetes.io/managed-by": "opentelemetry-operator",
-									"app.kubernetes.io/name":       "test-targetallocator",
-									"app.kubernetes.io/part-of":    "opentelemetry",
-									"app.kubernetes.io/version":    "latest",
-								},
-								Annotations: map[string]string{
-									"opentelemetry-targetallocator-config/hash": "9d78d2ecfad18bad24dec7e9a825b4ce45657ecbb2e6b32845b585b7c15ea407",
-								},
-							},
-							Spec: corev1.PodSpec{
-								Volumes: []corev1.Volume{
-									{
-										Name: "ta-internal",
-										VolumeSource: corev1.VolumeSource{
-											ConfigMap: &corev1.ConfigMapVolumeSource{
-												LocalObjectReference: corev1.LocalObjectReference{
-													Name: "test-targetallocator",
-												},
-												Items: []corev1.KeyToPath{
-													{
-														Key:  "targetallocator.yaml",
-														Path: "targetallocator.yaml",
-													},
-												},
-											},
-										},
-									},
-								},
-								Containers: []corev1.Container{
-									{
-										Name:  "ta-container",
-										Image: "default-ta-allocator",
-										Env: []corev1.EnvVar{
-											{
-												Name: "OTELCOL_NAMESPACE",
-												ValueFrom: &corev1.EnvVarSource{
-													FieldRef: &corev1.ObjectFieldSelector{
-														FieldPath: "metadata.namespace",
-													},
-												},
-											},
-										},
-										Ports: []corev1.ContainerPort{
-											{
-												Name:          "http",
-												HostPort:      0,
-												ContainerPort: 8080,
-												Protocol:      "TCP",
-											},
-										},
-										VolumeMounts: []corev1.VolumeMount{
-											{
-												Name:      "ta-internal",
-												MountPath: "/conf",
-											},
-										},
-										LivenessProbe: &corev1.Probe{
-											ProbeHandler: corev1.ProbeHandler{
-												HTTPGet: &corev1.HTTPGetAction{
-													Path: "/livez",
-													Port: intstr.FromInt(8080),
-												},
-											},
-										},
-										ReadinessProbe: &corev1.Probe{
-											ProbeHandler: corev1.ProbeHandler{
-												HTTPGet: &corev1.HTTPGetAction{
-													Path: "/readyz",
-													Port: intstr.FromInt(8080),
-												},
-											},
-										},
-									},
-								},
-								DNSPolicy:             "ClusterFirst",
-								DNSConfig:             &corev1.PodDNSConfig{},
-								ShareProcessNamespace: ptr.To(false),
-								ServiceAccountName:    "test-targetallocator",
-							},
-						},
-					},
-				},
-				&corev1.ServiceAccount{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-targetallocator",
-						Namespace: "test",
-						Labels: map[string]string{
-							"app.kubernetes.io/component":  "opentelemetry-targetallocator",
-							"app.kubernetes.io/instance":   "test.test",
-							"app.kubernetes.io/managed-by": "opentelemetry-operator",
-							"app.kubernetes.io/name":       "test-targetallocator",
-							"app.kubernetes.io/part-of":    "opentelemetry",
-							"app.kubernetes.io/version":    "latest",
-						},
-					},
-				},
-				&corev1.Service{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-targetallocator",
-						Namespace: "test",
-						Labels: map[string]string{
-							"app.kubernetes.io/component":  "opentelemetry-targetallocator",
-							"app.kubernetes.io/instance":   "test.test",
-							"app.kubernetes.io/managed-by": "opentelemetry-operator",
-							"app.kubernetes.io/name":       "test-targetallocator",
-							"app.kubernetes.io/part-of":    "opentelemetry",
-							"app.kubernetes.io/version":    "latest",
-						},
-						Annotations: nil,
-					},
-					Spec: corev1.ServiceSpec{
-						Ports: []corev1.ServicePort{
-							{
-								Name: "targetallocation",
-								Port: 80,
-								TargetPort: intstr.IntOrString{
-									Type:   1,
-									StrVal: "http",
-								},
-							},
-						},
-						Selector: taSelectorLabels,
-					},
-				},
-				&policyV1.PodDisruptionBudget{
-					TypeMeta: metav1.TypeMeta{},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-targetallocator",
-						Namespace: "test",
-						Labels: map[string]string{
-							"app.kubernetes.io/component":  "opentelemetry-targetallocator",
-							"app.kubernetes.io/instance":   "test.test",
-							"app.kubernetes.io/managed-by": "opentelemetry-operator",
-							"app.kubernetes.io/name":       "test-targetallocator",
-							"app.kubernetes.io/part-of":    "opentelemetry",
-							"app.kubernetes.io/version":    "latest",
-						},
-						Annotations: map[string]string{
-							"opentelemetry-targetallocator-config/hash": "9d78d2ecfad18bad24dec7e9a825b4ce45657ecbb2e6b32845b585b7c15ea407",
-						},
-					},
-					Spec: policyV1.PodDisruptionBudgetSpec{
-						Selector: &v1.LabelSelector{
-							MatchLabels: map[string]string{
-								"app.kubernetes.io/component":  "opentelemetry-targetallocator",
-								"app.kubernetes.io/instance":   "test.test",
-								"app.kubernetes.io/managed-by": "opentelemetry-operator",
-								"app.kubernetes.io/name":       "test-targetallocator",
-								"app.kubernetes.io/part-of":    "opentelemetry",
-							},
-						},
-						MaxUnavailable: &intstr.IntOrString{
-							Type:   intstr.Int,
-							IntVal: 1,
-						},
-					},
-				},
-				&monitoringv1.ServiceMonitor{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-targetallocator",
-						Namespace: "test",
-						Labels: map[string]string{
-							"app.kubernetes.io/component":  "opentelemetry-targetallocator",
-							"app.kubernetes.io/instance":   "test.test",
-							"app.kubernetes.io/managed-by": "opentelemetry-operator",
-							"app.kubernetes.io/name":       "test-targetallocator",
-							"app.kubernetes.io/part-of":    "opentelemetry",
-							"app.kubernetes.io/version":    "latest",
-						},
-						Annotations: nil,
-					},
-					Spec: monitoringv1.ServiceMonitorSpec{
-						Endpoints: []monitoringv1.Endpoint{
-							{Port: "targetallocation"},
-						},
-						Selector: v1.LabelSelector{
-							MatchLabels: map[string]string{
-								"app.kubernetes.io/component":  "opentelemetry-targetallocator",
-								"app.kubernetes.io/instance":   "test.test",
-								"app.kubernetes.io/managed-by": "opentelemetry-operator",
-								"app.kubernetes.io/name":       "test-targetallocator",
-								"app.kubernetes.io/part-of":    "opentelemetry",
-							},
-						},
-						NamespaceSelector: monitoringv1.NamespaceSelector{
-							MatchNames: []string{"test"},
-						},
-					},
-				},
-			},
-			wantErr:      false,
-			featuregates: []string{},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2193,23 +2647,21 @@ prometheus_cr:
 				config.WithCollectorImage("default-collector"),
 				config.WithTargetAllocatorImage("default-ta-allocator"),
 			)
-			params := manifests.Params{
-				Log:     logr.Discard(),
-				Config:  cfg,
-				OtelCol: tt.args.instance,
+			params := targetallocator.Params{
+				Log:             logr.Discard(),
+				Config:          cfg,
+				TargetAllocator: tt.args.instance,
+				Collector:       tt.args.collector,
 			}
-			targetAllocator, err := collector.TargetAllocator(params)
-			require.NoError(t, err)
-			params.TargetAllocator = targetAllocator
 			if len(tt.featuregates) > 0 {
 				fg := strings.Join(tt.featuregates, ",")
 				flagset := featuregate.Flags(colfeaturegate.GlobalRegistry())
-				if err = flagset.Set(featuregate.FeatureGatesFlag, fg); err != nil {
+				if err := flagset.Set(featuregate.FeatureGatesFlag, fg); err != nil {
 					t.Errorf("featuregate setting error = %v", err)
 					return
 				}
 			}
-			got, err := BuildCollector(params)
+			got, err := BuildTargetAllocator(params)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("BuildAll() error = %v, wantErr %v", err, tt.wantErr)
 				return
