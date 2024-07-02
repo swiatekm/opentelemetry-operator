@@ -1,0 +1,9 @@
+---
+apiVersion: v1
+data:
+  targetallocator.yaml: |
+    allocation_strategy: consistent-hashing
+    filter_strategy: ""
+kind: ConfigMap
+metadata:
+  name: ta-targetallocator
