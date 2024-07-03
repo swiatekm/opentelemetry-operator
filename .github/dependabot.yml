@@ -53,3 +53,8 @@ updates:
     directory: /cmd/operator-opamp-bridge
     schedule:
       interval: weekly
+
+  - package-ecosystem: docker
+    directory: /config/default
+    schedule:
+      interval: weekly
