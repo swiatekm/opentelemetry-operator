@@ -7,6 +7,7 @@ retract v1.51.0
 require (
 	dario.cat/mergo v1.0.1
 	github.com/Masterminds/semver/v3 v3.2.1
+	github.com/blang/semver/v4 v4.0.0
 	github.com/buraksezer/consistent v0.10.0
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/ghodss/yaml v1.0.0
@@ -23,7 +24,7 @@ require (
 	github.com/prometheus-operator/prometheus-operator v0.76.0
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.76.0
 	github.com/prometheus-operator/prometheus-operator/pkg/client v0.76.0
-	github.com/prometheus/client_golang v1.20.0
+	github.com/prometheus/client_golang v1.20.2
 	github.com/prometheus/common v0.55.0
 	github.com/prometheus/prometheus v0.54.0
 	github.com/shirou/gopsutil v3.21.11+incompatible
@@ -69,7 +70,6 @@ require (
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/aws/aws-sdk-go v1.54.19 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/bytedance/sonic v1.11.6 // indirect
 	github.com/bytedance/sonic/loader v0.1.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
