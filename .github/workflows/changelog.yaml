@@ -66,15 +66,22 @@ jobs:
           make chlog-validate \
             || { echo "New ./.chloggen/*.yaml file failed validation."; exit 1; }
 
-      # In order to validate any links in the yaml file, render the config to markdown
-      - name: Render .chloggen changelog entries
-        run: make chlog-preview > changelog_preview.md
+  check-links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            changelog:
+              - 'CHANGELOG.md'
       - name: Install markdown-link-check
+        if: steps.changes.outputs.changelog == 'true'
         run: npm install -g markdown-link-check
       - name: Run markdown-link-check
+        if: steps.changes.outputs.changelog == 'true'
         run: |
           markdown-link-check \
             --verbose \
             --config .github/workflows/check_links_config.json \
-            changelog_preview.md \
-            || { echo "Check that anchor links are lowercase"; exit 1; }
+            CHANGELOG.md
