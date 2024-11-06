@@ -69,19 +69,20 @@ jobs:
   check-links:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: dorny/paths-filter@v3
         id: changes
         with:
           filters: |
             changelog:
               - 'CHANGELOG.md'
-      - name: Install markdown-link-check
-        if: steps.changes.outputs.changelog == 'true'
-        run: npm install -g markdown-link-check
-      - name: Run markdown-link-check
-        if: steps.changes.outputs.changelog == 'true'
-        run: |
-          markdown-link-check \
-            --verbose \
-            --config .github/workflows/check_links_config.json \
-            CHANGELOG.md
+      # Checks the status of hyperlinks in .md files in verbose mode
+      - name: Check links
+        uses: gaurav-nelson/github-action-markdown-link-check@v1
+        with:
+          use-verbose-mode: 'yes'
+          config-file: '.github/workflows/check_links_config.json'
+          file-path: './CHANGELOG.md'
