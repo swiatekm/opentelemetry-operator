@@ -2,5 +2,19 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description" : "Update Go versions used for building in the CI",
+      "datasourceTemplate": "golang-version",
+      "depNameTemplate": "go",
+      "fileMatch": [
+        "(^|/)\\.github/workflows/.+\\.ya?ml$"
+      ],
+      "matchStrings": [
+        "go-version: \"~(?<currentValue>.+)\""
+      ]
+    }
   ]
 }
