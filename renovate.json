@@ -25,5 +25,18 @@
         "# renovate: datasource=(?<datasource>[a-z-.]+?) depName=(?<depName>[^\\s]+?)(?: (?:packageName)=(?<packageName>[^\\s]+?))?(?: versioning=(?<versioning>[^\\s]+?))?(?: extractVersion=(?<extractVersion>[^\\s]+?))?(?: registryUrl=(?<registryUrl>[^\\s]+?))?\\s+[A-Za-z0-9_]+?_VERSION\\s*:*\\??=\\s*[\"']?(?<currentValue>.+?)[\"']?\\s"
       ]
     }
+  ],
+  "packageRules": [
+    {
+      "matchDatasources": ["golang-version"],
+      "matchManagers": ["regex"],
+      "matchFileNames": [".github/workflows/*.yaml", ".github/workflows/*.yml"],
+      "commitMessageTopic": "go version in CI"
+    },
+    {
+      "matchManagers": ["regex"],
+      "matchFileNames": ["Makefile"],
+      "commitMessageTopic": "tool {{depName}}"
+    }
   ]
 }
