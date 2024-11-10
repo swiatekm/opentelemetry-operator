@@ -497,7 +497,7 @@ CONTROLLER_TOOLS_VERSION ?= v0.16.1
 # renovate: datasource=go depName=github.com/golangci/golangci-lint/cmd/golangci-lint
 GOLANGCI_LINT_VERSION ?= v1.61.0
 # renovate: datasource=go depName=sigs.k8s.io/kind
-KIND_VERSION ?= v0.20.0
+KIND_VERSION ?= v0.25.0
 # renovate: datasource=go depName=github.com/kyverno/chainsaw
 CHAINSAW_VERSION ?= v0.2.11
 
