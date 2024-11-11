@@ -63,10 +63,7 @@ const (
 	agentTestFileBatchNotAllowedName        = "testdata/agentbatchnotallowed.yaml"
 	agentTestFileNoProcessorsAllowedName    = "testdata/agentnoprocessorsallowed.yaml"
 
-	// collectorStartTime is set to the result of a zero'd out creation timestamp
-	// read more here https://github.com/open-telemetry/opentelemetry-go/issues/4268
-	// we could attempt to hack the creation timestamp, but this is a constant and far easier.
-	collectorStartTime = uint64(11651379494838206464)
+	collectorStartTime = uint64(0)
 )
 
 var (
@@ -244,10 +241,10 @@ func TestAgent_getHealth(t *testing.T) {
 			want: []*protobufs.ComponentHealth{
 				{
 					Healthy:            true,
-					StartTimeUnixNano:  uint64(fakeClock.Now().UnixNano()),
+					StartTimeUnixNano:  timeToUnixNanoUnsigned(fakeClock.Now()),
 					LastError:          "",
 					Status:             "",
-					StatusTimeUnixNano: uint64(fakeClock.Now().UnixNano()),
+					StatusTimeUnixNano: timeToUnixNanoUnsigned(fakeClock.Now()),
 					ComponentHealthMap: map[string]*protobufs.ComponentHealth{},
 				},
 			},
@@ -269,15 +266,15 @@ func TestAgent_getHealth(t *testing.T) {
 			want: []*protobufs.ComponentHealth{
 				{
 					Healthy:            true,
-					StartTimeUnixNano:  uint64(fakeClock.Now().UnixNano()),
-					StatusTimeUnixNano: uint64(fakeClock.Now().UnixNano()),
+					StartTimeUnixNano:  timeToUnixNanoUnsigned(fakeClock.Now()),
+					StatusTimeUnixNano: timeToUnixNanoUnsigned(fakeClock.Now()),
 					ComponentHealthMap: map[string]*protobufs.ComponentHealth{
 						"testnamespace/collector": {
 							Healthy:            true,
 							StartTimeUnixNano:  collectorStartTime,
 							LastError:          "",
 							Status:             "",
-							StatusTimeUnixNano: uint64(fakeClock.Now().UnixNano()),
+							StatusTimeUnixNano: timeToUnixNanoUnsigned(fakeClock.Now()),
 							ComponentHealthMap: map[string]*protobufs.ComponentHealth{},
 						},
 					},
@@ -302,15 +299,15 @@ func TestAgent_getHealth(t *testing.T) {
 			want: []*protobufs.ComponentHealth{
 				{
 					Healthy:            true,
-					StartTimeUnixNano:  uint64(fakeClock.Now().UnixNano()),
-					StatusTimeUnixNano: uint64(fakeClock.Now().UnixNano()),
+					StartTimeUnixNano:  timeToUnixNanoUnsigned(fakeClock.Now()),
+					StatusTimeUnixNano: timeToUnixNanoUnsigned(fakeClock.Now()),
 					ComponentHealthMap: map[string]*protobufs.ComponentHealth{
 						"testnamespace/collector": {
 							Healthy:            true,
 							StartTimeUnixNano:  collectorStartTime,
 							LastError:          "",
 							Status:             "",
-							StatusTimeUnixNano: uint64(fakeClock.Now().UnixNano()),
+							StatusTimeUnixNano: timeToUnixNanoUnsigned(fakeClock.Now()),
 							ComponentHealthMap: map[string]*protobufs.ComponentHealth{},
 						},
 						"testnamespace/other": {
@@ -318,7 +315,7 @@ func TestAgent_getHealth(t *testing.T) {
 							StartTimeUnixNano:  collectorStartTime,
 							LastError:          "",
 							Status:             "",
-							StatusTimeUnixNano: uint64(fakeClock.Now().UnixNano()),
+							StatusTimeUnixNano: timeToUnixNanoUnsigned(fakeClock.Now()),
 							ComponentHealthMap: map[string]*protobufs.ComponentHealth{},
 						},
 					},
@@ -342,21 +339,21 @@ func TestAgent_getHealth(t *testing.T) {
 			want: []*protobufs.ComponentHealth{
 				{
 					Healthy:            true,
-					StartTimeUnixNano:  uint64(fakeClock.Now().UnixNano()),
-					StatusTimeUnixNano: uint64(fakeClock.Now().UnixNano()),
+					StartTimeUnixNano:  timeToUnixNanoUnsigned(fakeClock.Now()),
+					StatusTimeUnixNano: timeToUnixNanoUnsigned(fakeClock.Now()),
 					ComponentHealthMap: map[string]*protobufs.ComponentHealth{
 						"other/third": {
 							Healthy:            true,
 							StartTimeUnixNano:  collectorStartTime,
 							LastError:          "",
 							Status:             "",
-							StatusTimeUnixNano: uint64(fakeClock.Now().UnixNano()),
+							StatusTimeUnixNano: timeToUnixNanoUnsigned(fakeClock.Now()),
 							ComponentHealthMap: map[string]*protobufs.ComponentHealth{
 								otherCollectorName + "/" + thirdCollectorName + "-1": {
 									Healthy:            true,
 									Status:             "Running",
-									StatusTimeUnixNano: uint64(fakeClock.Now().UnixNano()),
-									StartTimeUnixNano:  uint64(podTime.UnixNano()),
+									StatusTimeUnixNano: timeToUnixNanoUnsigned(fakeClock.Now()),
+									StartTimeUnixNano:  timeToUnixNanoUnsigned(podTime.Time),
 								},
 							},
 						},
@@ -381,20 +378,20 @@ func TestAgent_getHealth(t *testing.T) {
 			want: []*protobufs.ComponentHealth{
 				{
 					Healthy:            true,
-					StartTimeUnixNano:  uint64(fakeClock.Now().UnixNano()),
-					StatusTimeUnixNano: uint64(fakeClock.Now().UnixNano()),
+					StartTimeUnixNano:  timeToUnixNanoUnsigned(fakeClock.Now()),
+					StatusTimeUnixNano: timeToUnixNanoUnsigned(fakeClock.Now()),
 					ComponentHealthMap: map[string]*protobufs.ComponentHealth{
 						"other/third": {
 							Healthy:            false, // we're working with mocks so the status will never be reconciled.
 							StartTimeUnixNano:  collectorStartTime,
 							LastError:          "",
 							Status:             "",
-							StatusTimeUnixNano: uint64(fakeClock.Now().UnixNano()),
+							StatusTimeUnixNano: timeToUnixNanoUnsigned(fakeClock.Now()),
 							ComponentHealthMap: map[string]*protobufs.ComponentHealth{
 								otherCollectorName + "/" + thirdCollectorName + "-1": {
 									Healthy:            false,
 									Status:             "Running",
-									StatusTimeUnixNano: uint64(fakeClock.Now().UnixNano()),
+									StatusTimeUnixNano: timeToUnixNanoUnsigned(fakeClock.Now()),
 									StartTimeUnixNano:  uint64(0),
 								},
 							},
@@ -434,7 +431,8 @@ func TestAgent_getHealth(t *testing.T) {
 				// We should only expect this to happen if we supply configuration
 				assert.Equal(t, effectiveConfig, mockClient.lastEffectiveConfig, "client's config should be updated")
 				assert.NotNilf(t, effectiveConfig.ConfigMap.GetConfigMap(), "configmap should have data")
-				assert.Equal(t, tt.want[i], agent.getHealth())
+				health := agent.getHealth()
+				assert.Equal(t, tt.want[i], health)
 			}
 		})
 	}

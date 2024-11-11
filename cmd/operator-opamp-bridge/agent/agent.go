@@ -17,6 +17,7 @@ package agent
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -95,10 +96,11 @@ func (agent *Agent) getHealth() *protobufs.ComponentHealth {
 			LastError:         err.Error(),
 		}
 	}
+
 	return &protobufs.ComponentHealth{
 		Healthy:            true,
 		StartTimeUnixNano:  agent.startTime,
-		StatusTimeUnixNano: uint64(agent.clock.Now().UnixNano()),
+		StatusTimeUnixNano: agent.getCurrentTimeUnixNano(),
 		LastError:          "",
 		ComponentHealthMap: healthMap,
 	}
@@ -124,9 +126,10 @@ func (agent *Agent) generateCollectorPoolHealth() (map[string]*protobufs.Compone
 		for _, pod := range podMap {
 			isPoolHealthy = isPoolHealthy && pod.Healthy
 		}
+
 		healthMap[key.String()] = &protobufs.ComponentHealth{
-			StartTimeUnixNano:  uint64(col.ObjectMeta.GetCreationTimestamp().UnixNano()),
-			StatusTimeUnixNano: uint64(agent.clock.Now().UnixNano()),
+			StartTimeUnixNano:  timeToUnixNanoUnsigned(col.ObjectMeta.GetCreationTimestamp().Time),
+			StatusTimeUnixNano: agent.getCurrentTimeUnixNano(),
 			Status:             col.Status.Scale.StatusReplicas,
 			ComponentHealthMap: podMap,
 			Healthy:            isPoolHealthy,
@@ -169,15 +172,15 @@ func (agent *Agent) generateCollectorHealth(selectorLabels map[string]string, na
 		if item.Status.Phase != "Running" {
 			healthy = false
 		}
-		var startTime int64
+		var startTime time.Time
 		if item.Status.StartTime != nil {
-			startTime = item.Status.StartTime.UnixNano()
+			startTime = item.Status.StartTime.Time
 		} else {
 			healthy = false
 		}
 		healthMap[key.String()] = &protobufs.ComponentHealth{
-			StartTimeUnixNano:  uint64(startTime),
-			StatusTimeUnixNano: uint64(agent.clock.Now().UnixNano()),
+			StartTimeUnixNano:  timeToUnixNanoUnsigned(startTime),
+			StatusTimeUnixNano: agent.getCurrentTimeUnixNano(),
 			Status:             string(item.Status.Phase),
 			Healthy:            healthy,
 		}
@@ -197,7 +200,7 @@ func (agent *Agent) onConnectFailed(ctx context.Context, err error) {
 
 // onError is called when an agent receives an error response from the server.
 func (agent *Agent) onError(ctx context.Context, err *protobufs.ServerErrorResponse) {
-	agent.logger.Error(fmt.Errorf(err.GetErrorMessage()), "server returned an error response")
+	agent.logger.Error(errors.New(err.GetErrorMessage()), "server returned an error response")
 }
 
 // saveRemoteConfigStatus receives a status from the server when the server sets a remote configuration.
@@ -207,7 +210,7 @@ func (agent *Agent) saveRemoteConfigStatus(_ context.Context, status *protobufs.
 
 // Start sets up the callbacks for the OpAMP client and begins the client's connection to the server.
 func (agent *Agent) Start() error {
-	agent.startTime = uint64(agent.clock.Now().UnixNano())
+	agent.startTime = agent.getCurrentTimeUnixNano()
 	settings := types.StartSettings{
 		OpAMPServerURL: agent.config.Endpoint,
 		Header:         agent.config.Headers.ToHTTPHeader(),
@@ -428,4 +431,23 @@ func (agent *Agent) onMessage(ctx context.Context, msg *types.MessageData) {
 	if msg.OwnMetricsConnSettings != nil {
 		agent.initMeter(msg.OwnMetricsConnSettings)
 	}
+}
+
+// getCurrentTimeUnixNano returns the current time as a uint64, which the protocol expects.
+func (agent *Agent) getCurrentTimeUnixNano() uint64 {
+	// technically this could be negative if the system time is set to before 1970-01-1
+	// the proto demands this to be a nonnegative number, so in that case, just return 0
+	return timeToUnixNanoUnsigned(agent.clock.Now())
+}
+
+// timeToUnixNanoUnsigned returns the number of nanoseconds elapsed from 1970-01-01 to the given time, but returns 0
+// if the value is negative. OpAMP expects these values to be non-negative, so this is the best we can do.
+func timeToUnixNanoUnsigned(t time.Time) (unsignedUnixNano uint64) {
+	signedUnixNano := t.UnixNano()
+	if signedUnixNano < 0 {
+		unsignedUnixNano = uint64(0)
+	} else {
+		unsignedUnixNano = uint64(signedUnixNano)
+	}
+	return
 }
