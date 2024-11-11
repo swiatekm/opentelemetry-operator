@@ -45,12 +45,12 @@ jobs:
 
     - name: Set up Go
       uses: actions/setup-go@v5
+      id: setup-go
       with:
         go-version: "~1.22.4"
 
     - name: Cache tools
       uses: actions/cache@v4
-      id: setup-go
       with:
         path: bin
         key: ${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}-${{ steps.setup-go.outputs.go-version }}
@@ -62,9 +62,9 @@ jobs:
       with:
         path: |
           /home/runner/.cache/golangci-lint
-        key: golangcilint-${{ hashFiles('**/go.sum') }}
+        key: golangcilint-${{ runner.os }}-${{ runner.arch }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('**/go.sum') }}
         restore-keys: |
-          golangcilint-
+          golangcilint-${{ runner.os }}-${{ runner.arch }}-${{ steps.setup-go.outputs.go-version }}-
 
     - name: Lint
       run: make lint
