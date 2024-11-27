@@ -106,36 +106,38 @@ func (m *Discoverer) ApplyConfig(source allocatorWatcher.EventSource, scrapeConf
 }
 
 func (m *Discoverer) Watch(fn func(targets map[string]*Item)) error {
-	labelsBuilder := labels.NewBuilder(labels.EmptyLabels())
 	for {
 		select {
 		case <-m.close:
 			m.log.Info("Service Discovery watch event stopped: discovery manager closed")
 			return nil
 		case tsets := <-m.manager.SyncCh():
-			m.ProcessTargets(labelsBuilder, tsets, fn)
+			m.ProcessTargets(tsets, fn)
 		}
 	}
 }
 
-func (m *Discoverer) ProcessTargets(builder *labels.Builder, tsets map[string][]*targetgroup.Group, fn func(targets map[string]*Item)) {
+func (m *Discoverer) ProcessTargets(tsets map[string][]*targetgroup.Group, fn func(targets map[string]*Item)) {
+	groupBuilder := labels.NewScratchBuilder(100)
+	targetBuilder := labels.NewScratchBuilder(100)
 	targets := map[string]*Item{}
 
 	for jobName, tgs := range tsets {
 		var count float64 = 0
 		for _, tg := range tgs {
-			builder.Reset(labels.EmptyLabels())
+			groupBuilder.Reset()
 			for ln, lv := range tg.Labels {
-				builder.Set(string(ln), string(lv))
+				groupBuilder.Add(string(ln), string(lv))
 			}
-			groupLabels := builder.Labels()
+			groupLabels := groupBuilder.Labels()
 			for _, t := range tg.Targets {
 				count++
-				builder.Reset(groupLabels)
+				targetBuilder.Reset()
+				targetBuilder.Assign(groupLabels)
 				for ln, lv := range t {
-					builder.Set(string(ln), string(lv))
+					targetBuilder.Add(string(ln), string(lv))
 				}
-				item := NewItem(jobName, string(t[model.AddressLabel]), builder.Labels(), "")
+				item := NewItem(jobName, string(t[model.AddressLabel]), targetBuilder.Labels(), "")
 				targets[item.Hash()] = item
 			}
 		}
