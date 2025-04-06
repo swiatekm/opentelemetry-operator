@@ -28,7 +28,7 @@ require (
 	github.com/prometheus-operator/prometheus-operator v0.80.1
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.80.1
 	github.com/prometheus-operator/prometheus-operator/pkg/client v0.80.1
-	github.com/prometheus/client_golang v1.21.0
+	github.com/prometheus/client_golang v1.21.1
 	github.com/prometheus/common v0.63.0
 	github.com/prometheus/prometheus v0.301.0
 	github.com/shirou/gopsutil v3.21.11+incompatible
@@ -153,7 +153,7 @@ require (
 	github.com/jmespath/go-jmespath v0.4.1-0.20220621161143-b0104c826a24 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
-	github.com/klauspost/compress v1.17.11 // indirect
+	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
 	github.com/kolo/xmlrpc v0.0.0-20220921171641-a4b6fa1dd06b // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
@@ -231,4 +231,16 @@ require (
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/prometheus/sigv4 v0.1.0 // indirect
+	go.opentelemetry.io/contrib/otelconf v0.15.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.11.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.11.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.35.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.35.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.35.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.35.0 // indirect
+	go.opentelemetry.io/otel/exporters/stdout/stdoutlog v0.11.0 // indirect
+	go.opentelemetry.io/otel/exporters/stdout/stdoutmetric v1.35.0 // indirect
+	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.35.0 // indirect
+	go.opentelemetry.io/otel/log v0.11.0 // indirect
+	go.opentelemetry.io/otel/sdk/log v0.11.0 // indirect
 )
