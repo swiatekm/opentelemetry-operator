@@ -366,6 +366,7 @@ e2e-upgrade: undeploy chainsaw
 
 .PHONY: prepare-e2e
 prepare-e2e: chainsaw set-image-controller add-image-targetallocator add-image-opampbridge start-kind cert-manager install-metrics-server install-targetallocator-prometheus-crds load-image-all deploy
+	@mkdir -p ./.testresults/e2e
 
 .PHONY: scorecard-tests
 scorecard-tests: operator-sdk
