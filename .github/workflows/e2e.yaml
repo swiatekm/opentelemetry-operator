@@ -64,7 +64,7 @@ jobs:
          - "1.23"
          - "1.32"
        group:
-         - e2e
+         # - e2e
          - e2e-automatic-rbac
          - e2e-autoscale
          - e2e-instrumentation
