@@ -12,6 +12,8 @@ concurrency:
 
 permissions:
   contents: read
+  checks: write
+  pull-requests: write
 
 env:
   IMAGE_ARCHIVE_FILENAME: images.tar
