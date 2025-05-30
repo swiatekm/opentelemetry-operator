@@ -171,3 +171,4 @@ jobs:
           comment: true
           skip_annotations: true
           include_passed: true
+          fail_on_parse_error: false
