@@ -18,7 +18,7 @@ jobs:
           merge-multiple: true
           pattern: e2e-junit-*
           path: '.testresults/e2e'
-          run_id: ${{ github.event.workflow_run.id }}
+          run-id: ${{ github.event.workflow_run.id }}
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@65fe03598d8d251738592a497a9e8547a5c48eaa # v5.6.0
         if: always()
