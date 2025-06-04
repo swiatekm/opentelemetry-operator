@@ -21,13 +21,15 @@ jobs:
         uses: dawidd6/action-download-artifact@4c1e823582f43b179e2cbb49c3eade4e41f992e2 # v10
         with:
           path: '.testresults/e2e'
+          name: 'e2e-junit-.*'
+          name_is_regexp: 'true'
           run_id: ${{ github.event.workflow_run.id || inputs.e2e_workflow_id }}
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@65fe03598d8d251738592a497a9e8547a5c48eaa # v5.6.0
         if: always()
         with:
           commit: ${{github.event.workflow_run.head_sha}}
-          report_paths: '.testresults/e2e/*.xml'
+          report_paths: '.testresults/e2e/**/*.xml'
           comment: true
           skip_annotations: true
           include_passed: true
