@@ -133,6 +133,7 @@ jobs:
         make e2e-log-operator KUBE_VERSION=$KUBE_VERSION
     - name: Upload test results
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      if: always()
       with:
         path: .testresults/e2e/*.xml
         name: e2e-junit-${{ matrix.group }}-${{ matrix.kube-version }}
