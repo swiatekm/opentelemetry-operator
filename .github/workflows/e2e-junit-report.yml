@@ -12,6 +12,7 @@ on:
 permissions:
   checks: write
   pull-requests: write
+  actions: read
 
 jobs:
   report:
@@ -24,12 +25,16 @@ jobs:
           name: 'e2e-junit-.*'
           name_is_regexp: 'true'
           run_id: ${{ github.event.workflow_run.id || inputs.e2e_workflow_id }}
-      - name: Publish Test Report
-        uses: mikepenz/action-junit-report@65fe03598d8d251738592a497a9e8547a5c48eaa # v5.6.0
-        if: always()
+      - name: Download Github Event File
+        uses: dawidd6/action-download-artifact@4c1e823582f43b179e2cbb49c3eade4e41f992e2 # v10
         with:
-          commit: ${{github.event.workflow_run.head_sha}}
-          report_paths: '.testresults/e2e/**/*.xml'
-          comment: true
-          skip_annotations: true
-          include_passed: true
+          path: 'event_file'
+          name: 'Event File'
+          run_id: ${{ github.event.workflow_run.id || inputs.e2e_workflow_id }}
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          commit: ${{ github.event.workflow_run.head_sha }}
+          event_file: event_file/Event File/event.json
+          event_name: ${{ github.event.workflow_run.event }}
+          files: ".testresults/e2e/**/*.xml"
