@@ -6,4 +6,4 @@ metadata:
 status:
   containerStatuses:
   - name: ta-container
-    restartCount: 1
+    restartCount: 0
