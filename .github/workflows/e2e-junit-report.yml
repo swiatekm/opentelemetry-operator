@@ -28,7 +28,6 @@ jobs:
       - name: Download Github Event File
         uses: dawidd6/action-download-artifact@4c1e823582f43b179e2cbb49c3eade4e41f992e2 # v10
         with:
-          path: 'event_file'
           name: 'Event File'
           run_id: ${{ github.event.workflow_run.id || inputs.e2e_workflow_id }}
       - name: Publish Test Results
