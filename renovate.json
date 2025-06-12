@@ -85,26 +85,25 @@
     {
       "matchManagers": ["regex"],
       "matchFileNames": ["autoinstrumentation/java/version.txt"],
-      "commitMessageTopic": "Update the OpenTelemetry java agent version to {{newValue}}"
+      "commitMessageTopic": "OpenTelemetry java agent version"
     },
     {
       "matchManagers": ["regex"],
       "matchFileNames": ["autoinstrumentation/dotnet/version.txt"],
-      "commitMessageTopic": "Update the OpenTelemetry dotnet agent version to {{newValue}}"
+      "commitMessageTopic": "OpenTelemetry dotnet agent version"
     },
     {
       "matchManagers": ["npm"],
       "matchFileNames": ["autoinstrumentation/nodejs/package.json"],
       "matchPackageNames": ["@opentelemetry/auto-instrumentations-node"],
-      "commitMessageTopic": "Update the OpenTelemetry nodejs agent version to {{newValue}}"
+      "commitMessageTopic": "OpenTelemetry nodejs agent version"
     },
     {
       "matchManagers": ["pip_requirements"],
       "matchFileNames": ["autoinstrumentation/python/requirements.txt"],
       "matchPackagePatterns": ["^opentelemetry-"],
       "groupName": "OpenTelemetry Python packages",
-      "commitMessageTopic": "Update the OpenTelemetry python agent version to {{newValue}}",
-      "prTitle": "Update the OpenTelemetry python agent version to {{newValue}}"
+      "commitMessageTopic": "OpenTelemetry python agent version"
     }
   ]
 }
