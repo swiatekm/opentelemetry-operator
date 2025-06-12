@@ -103,7 +103,7 @@
       "matchFileNames": ["autoinstrumentation/python/requirements.txt"],
       "matchPackagePatterns": ["^opentelemetry-"],
       "groupName": "OpenTelemetry Python packages",
-      "commitMessageTopic": "OpenTelemetry python agent version"
+      "commitMessageTopic": "OpenTelemetry python agent version to {{ newValue }}"
     }
   ]
 }
