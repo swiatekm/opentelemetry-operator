@@ -4,7 +4,7 @@ go 1.23.0
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/oklog/ulid/v2 v2.1.0
+	github.com/oklog/ulid/v2 v2.1.1
 	github.com/open-telemetry/opamp-go v0.15.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.52.0
 	google.golang.org/protobuf v1.34.2
