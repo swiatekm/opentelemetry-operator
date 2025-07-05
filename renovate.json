@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "labels": ["dependencies"],
-  "enabledManagers": ["regex", "npm", "pip_requirements"],
+  "enabledManagers": ["regex", "npm", "pip_requirements", "gomod", "dockerfile", "github-actions"],
   "customManagers": [
     {
       "customType": "regex",
@@ -106,7 +106,49 @@
       "group": {
         "commitMessageTopic": "OpenTelemetry python agent version to {{ upgrades.0.newVersion }}"
       }
-
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchPackagePatterns": ["^golang\\.org/x/"],
+      "groupName": "golang-org-x"
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchPackagePatterns": [
+        "^github\\.com/prometheus-operator/prometheus-operator$",
+        "^github\\.com/prometheus-operator/prometheus-operator/.*",
+        "^github\\.com/prometheus/prometheus$",
+        "^github\\.com/prometheus/prometheus/.*",
+        "^github\\.com/prometheus/client_go$",
+        "^github\\.com/prometheus/client_go/.*"
+      ],
+      "groupName": "prometheus"
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchPackagePatterns": [
+        "^k8s\\.io/.*",
+        "^sigs\\.k8s\\.io/.*"
+      ],
+      "groupName": "kubernetes"
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchPackagePatterns": [
+        "^go\\.opentelemetry\\.io/otel$",
+        "^go\\.opentelemetry\\.io/otel/.*"
+      ],
+      "groupName": "otel"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchPackagePatterns": ["^docker/"],
+      "groupName": "gha-docker"
+    },
+    {
+      "matchManagers": ["dockerfile"],
+      "matchPackagePatterns": ["^kindest/node.*"],
+      "excludeUpdateTypes": ["minor"]
     }
   ]
 }
