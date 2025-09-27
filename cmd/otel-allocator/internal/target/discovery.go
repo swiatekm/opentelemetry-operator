@@ -7,6 +7,8 @@ import (
 	"context"
 	"hash"
 	"hash/fnv"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,6 +27,8 @@ import (
 
 	allocatorWatcher "github.com/open-telemetry/opentelemetry-operator/cmd/otel-allocator/internal/watcher"
 )
+
+const labelBuilderPreallocSize = 100
 
 type Discoverer struct {
 	log                         logr.Logger
@@ -199,7 +203,7 @@ func (m *Discoverer) Reload() {
 
 // processTargetGroups processes the target groups and returns a map of targets.
 func (m *Discoverer) processTargetGroups(jobName string, groups []*targetgroup.Group, intoTargets []*Item) {
-	builder := labels.NewBuilder(labels.Labels{})
+	labelBuffer := make(labels.Labels, 0, labelBuilderPreallocSize)
 
 	begin := time.Now()
 	defer func() {
@@ -208,18 +212,21 @@ func (m *Discoverer) processTargetGroups(jobName string, groups []*targetgroup.G
 	var count float64 = 0
 	index := 0
 	for _, tg := range groups {
-		builder.Reset(labels.EmptyLabels())
+		labelBuffer = labelBuffer[:0]
 		for ln, lv := range tg.Labels {
-			builder.Set(string(ln), string(lv))
+			labelBuffer = append(labelBuffer, labels.Label{Name: string(ln), Value: string(lv)})
 		}
-		groupLabels := builder.Labels()
+		groupLabelCount := len(labelBuffer)
+		slices.SortFunc(labelBuffer, func(a, b labels.Label) int { return strings.Compare(a.Name, b.Name) })
 		for _, t := range tg.Targets {
 			count++
-			builder.Reset(groupLabels)
+			targetLabels := make(labels.Labels, 0, groupLabelCount+len(t))
+			targetLabels = append(targetLabels, labelBuffer...)
 			for ln, lv := range t {
-				builder.Set(string(ln), string(lv))
+				targetLabels = append(targetLabels, labels.Label{Name: string(ln), Value: string(lv)})
 			}
-			item := NewItem(jobName, string(t[model.AddressLabel]), builder.Labels(), "")
+			slices.SortFunc(targetLabels[groupLabelCount:], func(a, b labels.Label) int { return strings.Compare(a.Name, b.Name) })
+			item := NewItem(jobName, string(t[model.AddressLabel]), targetLabels, "")
 			intoTargets[index] = item
 			index++
 		}
