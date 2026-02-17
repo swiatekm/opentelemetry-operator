@@ -130,7 +130,6 @@
       "matchDatasources": ["docker"],
       "matchPackageNames": ["kindest/node"],
       "groupName": "kind node images",
-      "schedule": ["on monday"],
       "commitMessageTopic": "kind node images"
     }
   ]
