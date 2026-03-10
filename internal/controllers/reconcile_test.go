@@ -1445,9 +1445,10 @@ func TestUpgrade(t *testing.T) {
 				assert.NoError(collect, updateErr)
 			}, time.Second*10, time.Millisecond*10)
 
+			// Wait for the reconciler's cached client to see the status update
 			require.EventuallyWithT(t, func(collect *assert.CollectT) {
 				freshOtelcol := &v1beta1.OpenTelemetryCollector{}
-				getErr := k8sClient.Get(testCtx, nsn, freshOtelcol)
+				getErr := reconciler.Get(testCtx, nsn, freshOtelcol)
 				assert.NoError(collect, getErr)
 				assert.Equal(collect, tt.input.Status, freshOtelcol.Status)
 			}, time.Second*10, time.Millisecond*10)
