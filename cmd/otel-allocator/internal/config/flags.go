@@ -6,6 +6,7 @@ package config
 import (
 	"flag"
 
+	"github.com/knadh/koanf/providers/posflag"
 	"github.com/spf13/pflag"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
@@ -23,6 +24,18 @@ const (
 	httpsTLSCertFilePathFlagName = "https-tls-cert-file"
 	httpsTLSKeyFilePathFlagName  = "https-tls-key-file"
 )
+
+// flagToConfigKeyMap maps CLI flag names to their corresponding koanf config key paths.
+var flagToConfigKeyMap = map[string]string{
+	listenAddrFlagName:           "listen_addr",
+	kubeConfigPathFlagName:       "kube_config_file_path",
+	prometheusCREnabledFlagName:  "prometheus_cr.enabled",
+	httpsEnabledFlagName:         "https.enabled",
+	listenAddrHttpsFlagName:      "https.listen_addr",
+	httpsCAFilePathFlagName:      "https.ca_file_path",
+	httpsTLSCertFilePathFlagName: "https.tls_cert_file_path",
+	httpsTLSKeyFilePathFlagName:  "https.tls_key_file_path",
+}
 
 // We can't bind this flag to our FlagSet, so we need to handle it separately.
 var zapCmdLineOpts zap.Options
@@ -48,54 +61,17 @@ func getConfigFilePath(flagSet *pflag.FlagSet) (string, error) {
 	return flagSet.GetString(configFilePathFlagName)
 }
 
-func getKubeConfigFilePath(flagSet *pflag.FlagSet) (value string, changed bool, err error) {
-	return getFlagValueAndChangedString(flagSet, kubeConfigPathFlagName)
-}
-
-func getListenAddr(flagSet *pflag.FlagSet) (value string, changed bool, err error) {
-	return getFlagValueAndChangedString(flagSet, listenAddrFlagName)
-}
-
-func getPrometheusCREnabled(flagSet *pflag.FlagSet) (value, changed bool, err error) {
-	return getFlagValueAndChangedBool(flagSet, prometheusCREnabledFlagName)
-}
-
-func getHttpsListenAddr(flagSet *pflag.FlagSet) (value string, changed bool, err error) {
-	return getFlagValueAndChangedString(flagSet, listenAddrHttpsFlagName)
-}
-
-func getHttpsEnabled(flagSet *pflag.FlagSet) (value, changed bool, err error) {
-	return getFlagValueAndChangedBool(flagSet, httpsEnabledFlagName)
-}
-
-func getHttpsCAFilePath(flagSet *pflag.FlagSet) (value string, changed bool, err error) {
-	return getFlagValueAndChangedString(flagSet, httpsCAFilePathFlagName)
-}
-
-func getHttpsTLSCertFilePath(flagSet *pflag.FlagSet) (value string, changed bool, err error) {
-	return getFlagValueAndChangedString(flagSet, httpsTLSCertFilePathFlagName)
-}
-
-func getHttpsTLSKeyFilePath(flagSet *pflag.FlagSet) (value string, changed bool, err error) {
-	return getFlagValueAndChangedString(flagSet, httpsTLSKeyFilePathFlagName)
-}
-
-// getFlagValueAndChanged returns the given flag's string value and whether it was changed.
-func getFlagValueAndChangedString(flagSet *pflag.FlagSet, flagName string) (value string, changed bool, err error) {
-	if changed = flagSet.Changed(flagName); !changed {
-		value, err = "", nil
-		return value, changed, err
+// flagToConfigKey maps a pflag.Flag to its koanf config key path and parsed value.
+// Only changed flags are mapped; unchanged flags return an empty key and are skipped.
+func flagToConfigKey(fs *pflag.FlagSet) func(f *pflag.Flag) (string, any) {
+	return func(f *pflag.Flag) (string, any) {
+		if !f.Changed {
+			return "", nil
+		}
+		key, ok := flagToConfigKeyMap[f.Name]
+		if !ok {
+			return "", nil
+		}
+		return key, posflag.FlagVal(fs, f)
 	}
-	value, err = flagSet.GetString(flagName)
-	return value, changed, err
-}
-
-// getFlagValueAndChanged returns the given flag's string value and whether it was changed.
-func getFlagValueAndChangedBool(flagSet *pflag.FlagSet, flagName string) (value, changed bool, err error) {
-	if changed = flagSet.Changed(flagName); !changed {
-		value, err = false, nil
-		return value, changed, err
-	}
-	value, err = flagSet.GetBool(flagName)
-	return value, changed, err
 }

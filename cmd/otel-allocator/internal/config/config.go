@@ -18,12 +18,17 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/go-viper/mapstructure/v2"
+	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/providers/posflag"
+	"github.com/knadh/koanf/v2"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/prometheus/common/model"
 	promconfig "github.com/prometheus/prometheus/config"
 	_ "github.com/prometheus/prometheus/discovery/install"
 	"github.com/spf13/pflag"
-	"gopkg.in/yaml.v2"
+	yamlv2 "gopkg.in/yaml.v2"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
@@ -137,14 +142,13 @@ func MapToPromConfig() mapstructure.DecodeHookFuncType {
 			return data, nil
 		}
 
-		dataMap := data.(map[any]any)
-		mb, err := yaml.Marshal(dataMap)
+		mb, err := yamlv2.Marshal(data)
 		if err != nil {
 			return nil, err
 		}
 
 		pConfig := &promconfig.Config{}
-		err = yaml.Unmarshal(mb, pConfig)
+		err = yamlv2.Unmarshal(mb, pConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -172,7 +176,7 @@ func MapToLabelSelector() mapstructure.DecodeHookFuncType {
 		}
 
 		result := &metav1.LabelSelector{}
-		fMap := data.(map[any]any)
+		fMap := data.(map[string]any)
 		if matchLabels, ok := fMap["matchLabels"]; ok {
 			fMap["matchlabels"] = matchLabels
 			delete(fMap, "matchLabels")
@@ -182,12 +186,12 @@ func MapToLabelSelector() mapstructure.DecodeHookFuncType {
 			delete(fMap, "matchExpressions")
 		}
 
-		b, err := yaml.Marshal(fMap)
+		b, err := yamlv2.Marshal(fMap)
 		if err != nil {
 			return nil, err
 		}
 
-		err = yaml.Unmarshal(b, result)
+		err = yamlv2.Unmarshal(b, result)
 		if err != nil {
 			return nil, err
 		}
@@ -195,121 +199,51 @@ func MapToLabelSelector() mapstructure.DecodeHookFuncType {
 	}
 }
 
-func LoadFromFile(file string, target *Config) error {
-	return unmarshal(target, file)
+// LoadFromFile loads a YAML config file into the koanf instance.
+func LoadFromFile(k *koanf.Koanf, configFile string) error {
+	return k.Load(file.Provider(configFile), yaml.Parser())
 }
 
-func LoadFromCLI(target *Config, flagSet *pflag.FlagSet) error {
-	var err error
-	// set the rest of the config attributes based on command-line flag values
-	target.RootLogger = zap.New(zap.UseFlagOptions(&zapCmdLineOpts))
-	klog.SetLogger(target.RootLogger)
-	ctrl.SetLogger(target.RootLogger)
+// envToConfigKeyMap maps environment variable names to their corresponding koanf config key paths.
+var envToConfigKeyMap = map[string]string{
+	"OTELCOL_NAMESPACE": "collector_namespace",
+}
 
-	if kubeConfigFilePath, changed, flagErr := getKubeConfigFilePath(flagSet); flagErr != nil {
-		return flagErr
-	} else if changed {
-		target.KubeConfigFilePath = kubeConfigFilePath
-	}
-	clusterConfig, err := clientcmd.BuildConfigFromFlags("", target.KubeConfigFilePath)
-	if err != nil {
-		pathError := &fs.PathError{}
-		if ok := errors.As(err, &pathError); !ok {
-			return err
+// LoadFromEnv loads configuration from environment variables into the koanf instance.
+func LoadFromEnv(k *koanf.Koanf) error {
+	return k.Load(env.ProviderWithValue("", ".", func(key, value string) (string, any) {
+		configKey, ok := envToConfigKeyMap[key]
+		if !ok {
+			return "", nil
 		}
-		clusterConfig, err = rest.InClusterConfig()
-		if err != nil {
-			return err
-		}
-		target.KubeConfigFilePath = ""
-	}
-	target.ClusterConfig = clusterConfig
-
-	if listenAddr, changed, flagErr := getListenAddr(flagSet); flagErr != nil {
-		return flagErr
-	} else if changed {
-		target.ListenAddr = listenAddr
-	}
-
-	if prometheusCREnabled, changed, flagErr := getPrometheusCREnabled(flagSet); flagErr != nil {
-		return flagErr
-	} else if changed {
-		target.PrometheusCR.Enabled = prometheusCREnabled
-	}
-
-	if httpsEnabled, changed, err := getHttpsEnabled(flagSet); err != nil {
-		return err
-	} else if changed {
-		target.HTTPS.Enabled = httpsEnabled
-	}
-
-	if listenAddrHttps, changed, err := getHttpsListenAddr(flagSet); err != nil {
-		return err
-	} else if changed {
-		target.HTTPS.ListenAddr = listenAddrHttps
-	}
-
-	if caFilePath, changed, err := getHttpsCAFilePath(flagSet); err != nil {
-		return err
-	} else if changed {
-		target.HTTPS.CAFilePath = caFilePath
-	}
-
-	if tlsCertFilePath, changed, err := getHttpsTLSCertFilePath(flagSet); err != nil {
-		return err
-	} else if changed {
-		target.HTTPS.TLSCertFilePath = tlsCertFilePath
-	}
-
-	if tlsKeyFilePath, changed, err := getHttpsTLSKeyFilePath(flagSet); err != nil {
-		return err
-	} else if changed {
-		target.HTTPS.TLSKeyFilePath = tlsKeyFilePath
-	}
-
-	return nil
+		return configKey, value
+	}), nil)
 }
 
-// LoadFromEnv loads configuration from environment variables.
-func LoadFromEnv(target *Config) error {
-	if ns, ok := os.LookupEnv("OTELCOL_NAMESPACE"); ok {
-		target.CollectorNamespace = ns
-	}
-	return nil
+// LoadFromCLI loads changed CLI flag values into the koanf instance.
+func LoadFromCLI(k *koanf.Koanf, flagSet *pflag.FlagSet) error {
+	return k.Load(posflag.ProviderWithFlag(flagSet, ".", nil, flagToConfigKey(flagSet)), nil)
 }
 
-// unmarshal decodes the contents of the configFile into the cfg argument, using a
-// mapstructure decoder with the following notable behaviors.
-// Decodes time.Duration from strings (see StringToModelDurationHookFunc).
-// Allows custom unmarshaling for promconfig.Config struct that implements yaml.Unmarshaler (see MapToPromConfig).
-// Allows custom unmarshaling for metav1.LabelSelector struct using both camelcase and lowercase field names (see MapToLabelSelector).
-func unmarshal(cfg *Config, configFile string) error {
-	yamlFile, err := os.ReadFile(configFile)
-	if err != nil {
-		return err
-	}
-
-	m := make(map[string]any)
-	err = yaml.Unmarshal(yamlFile, &m)
-	if err != nil {
-		return fmt.Errorf("error unmarshaling YAML: %w", err)
-	}
-
-	dc := mapstructure.DecoderConfig{
-		TagName: "yaml",
-		Result:  cfg,
-		DecodeHook: mapstructure.ComposeDecodeHookFunc(
-			StringToModelOrTimeDurationHookFunc(),
-			MapToPromConfig(),
-			MapToLabelSelector(),
-		),
-	}
-
-	decoder, err := mapstructure.NewDecoder(&dc)
-	if err != nil {
-		return err
-	}
-	return decoder.Decode(m)
+// Unmarshal decodes the koanf contents into the cfg argument, using mapstructure
+// with the following notable behaviors:
+//   - Decodes time.Duration from strings (see StringToModelOrTimeDurationHookFunc).
+//   - Allows custom unmarshaling for promconfig.Config (see MapToPromConfig).
+//   - Allows custom unmarshaling for metav1.LabelSelector using both camelcase and
+//     lowercase field names (see MapToLabelSelector).
+func Unmarshal(k *koanf.Koanf, cfg *Config) error {
+	return k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
+		Tag: "yaml",
+		DecoderConfig: &mapstructure.DecoderConfig{
+			TagName: "yaml",
+			Result:  cfg,
+			DecodeHook: mapstructure.ComposeDecodeHookFunc(
+				StringToModelOrTimeDurationHookFunc(),
+				MapToPromConfig(),
+				MapToLabelSelector(),
+			),
+		},
+	})
 }
 
 func CreateDefaultConfig() Config {
@@ -335,35 +269,53 @@ func CreateDefaultConfig() Config {
 }
 
 func Load(args []string) (*Config, error) {
-	var err error
-
 	flagSet := getFlagSet(pflag.ExitOnError)
-	err = flagSet.Parse(args)
-	if err != nil {
+	if err := flagSet.Parse(args); err != nil {
 		return nil, err
 	}
 
-	config := CreateDefaultConfig()
+	k := koanf.New(".")
 
-	// load the config from the config file
+	// Load sources in priority order: file < env < CLI
 	configFilePath, err := getConfigFilePath(flagSet)
 	if err != nil {
 		return nil, err
 	}
-	err = LoadFromFile(configFilePath, &config)
-	if err != nil {
+	if err := LoadFromFile(k, configFilePath); err != nil {
+		return nil, err
+	}
+	if err := LoadFromEnv(k); err != nil {
+		return nil, err
+	}
+	if err := LoadFromCLI(k, flagSet); err != nil {
 		return nil, err
 	}
 
-	err = LoadFromEnv(&config)
-	if err != nil {
+	// Unmarshal the merged config into the struct
+	config := CreateDefaultConfig()
+	if err := Unmarshal(k, &config); err != nil {
 		return nil, err
 	}
 
-	err = LoadFromCLI(&config, flagSet)
+	// Set up logger from CLI flags
+	config.RootLogger = zap.New(zap.UseFlagOptions(&zapCmdLineOpts))
+	klog.SetLogger(config.RootLogger)
+	ctrl.SetLogger(config.RootLogger)
+
+	// Build cluster config
+	clusterConfig, err := clientcmd.BuildConfigFromFlags("", config.KubeConfigFilePath)
 	if err != nil {
-		return nil, err
+		pathError := &fs.PathError{}
+		if ok := errors.As(err, &pathError); !ok {
+			return nil, err
+		}
+		clusterConfig, err = rest.InClusterConfig()
+		if err != nil {
+			return nil, err
+		}
+		config.KubeConfigFilePath = ""
 	}
+	config.ClusterConfig = clusterConfig
 
 	return &config, nil
 }

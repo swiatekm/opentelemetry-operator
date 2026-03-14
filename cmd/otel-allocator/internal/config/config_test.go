@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aws/smithy-go/ptr"
+	"github.com/knadh/koanf/v2"
 	commonconfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	promconfig "github.com/prometheus/prometheus/config"
@@ -630,11 +631,13 @@ func TestLoadFromFile(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CreateDefaultConfig()
-			err := LoadFromFile(tt.args.file, &got)
+			k := koanf.New(".")
+			err := LoadFromFile(k, tt.args.file)
 			if !tt.wantErr(t, err, fmt.Sprintf("Load(%v)", tt.args.file)) {
 				return
 			}
+			got := CreateDefaultConfig()
+			require.NoError(t, Unmarshal(k, &got))
 			assert.Equalf(t, tt.want, got, "Load(%v)", tt.args.file)
 		})
 	}
@@ -643,10 +646,10 @@ func TestLoadFromFile(t *testing.T) {
 func TestLoadFromEnv(t *testing.T) {
 	namespace := "default"
 	t.Setenv("OTELCOL_NAMESPACE", namespace)
-	cfg := &Config{}
-	err := LoadFromEnv(cfg)
+	k := koanf.New(".")
+	err := LoadFromEnv(k)
 	require.NoError(t, err)
-	assert.Equal(t, namespace, cfg.CollectorNamespace)
+	assert.Equal(t, namespace, k.String("collector_namespace"))
 }
 
 func TestValidateConfig(t *testing.T) {

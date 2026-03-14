@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/knadh/koanf/v2"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	promconfig "github.com/prometheus/prometheus/config"
@@ -1107,9 +1108,11 @@ func TestServer_ScrapeConfigResponse(t *testing.T) {
 			s, err := NewServer(logger, nil, listenAddr)
 			require.NoError(t, err)
 
-			allocCfg := allocatorconfig.CreateDefaultConfig()
-			err = allocatorconfig.LoadFromFile(tc.filePath, &allocCfg)
+			k := koanf.New(".")
+			err = allocatorconfig.LoadFromFile(k, tc.filePath)
 			require.NoError(t, err)
+			allocCfg := allocatorconfig.CreateDefaultConfig()
+			require.NoError(t, allocatorconfig.Unmarshal(k, &allocCfg))
 
 			jobToScrapeConfig := make(map[string]*promconfig.ScrapeConfig)
 

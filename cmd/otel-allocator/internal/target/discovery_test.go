@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/knadh/koanf/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	commonconfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
@@ -86,9 +87,11 @@ func TestDiscovery(t *testing.T) {
 	}()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := config.CreateDefaultConfig()
-			err := config.LoadFromFile(tt.args.file, &cfg)
+			k := koanf.New(".")
+			err := config.LoadFromFile(k, tt.args.file)
 			assert.NoError(t, err)
+			cfg := config.CreateDefaultConfig()
+			assert.NoError(t, config.Unmarshal(k, &cfg))
 			assert.True(t, len(cfg.PromConfig.ScrapeConfigs) > 0)
 			err = manager.ApplyConfig(allocatorWatcher.EventSourcePrometheusCR, cfg.PromConfig.ScrapeConfigs)
 			assert.NoError(t, err)

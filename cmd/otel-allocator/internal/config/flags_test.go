@@ -4,7 +4,6 @@
 package config
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/spf13/pflag"
@@ -21,70 +20,55 @@ func TestGetFlagSet(t *testing.T) {
 	assert.NotNil(t, fs.Lookup(kubeConfigPathFlagName), "Flag %s not found", kubeConfigPathFlagName)
 }
 
-func TestFlagGetters(t *testing.T) {
+func TestFlagToConfigKey(t *testing.T) {
 	tests := []struct {
-		name          string
-		flagArgs      []string
-		expectedValue any
-		expectedErr   bool
-		getterFunc    func(*pflag.FlagSet) (any, error)
+		name        string
+		flagArgs    []string
+		flagName    string
+		expectedKey string
+		expectSkip  bool
 	}{
 		{
-			name:          "GetConfigFilePath",
-			flagArgs:      []string{"--" + configFilePathFlagName, "/path/to/config"},
-			expectedValue: "/path/to/config",
-			getterFunc:    func(fs *pflag.FlagSet) (any, error) { return getConfigFilePath(fs) },
+			name:        "listen addr maps to listen_addr",
+			flagArgs:    []string{"--" + listenAddrFlagName, ":8081"},
+			flagName:    listenAddrFlagName,
+			expectedKey: "listen_addr",
 		},
 		{
-			name:          "GetKubeConfigFilePath",
-			flagArgs:      []string{"--" + kubeConfigPathFlagName, filepath.Join("~", ".kube", "config")},
-			expectedValue: filepath.Join("~", ".kube", "config"),
-			getterFunc: func(fs *pflag.FlagSet) (any, error) {
-				value, _, err := getKubeConfigFilePath(fs)
-				return value, err
-			},
+			name:        "kubeconfig maps to kube_config_file_path",
+			flagArgs:    []string{"--" + kubeConfigPathFlagName, "/some/path"},
+			flagName:    kubeConfigPathFlagName,
+			expectedKey: "kube_config_file_path",
 		},
 		{
-			name:          "GetListenAddr",
-			flagArgs:      []string{"--" + listenAddrFlagName, ":8081"},
-			expectedValue: ":8081",
-			getterFunc: func(fs *pflag.FlagSet) (any, error) {
-				value, _, err := getListenAddr(fs)
-				return value, err
-			},
+			name:        "prometheus CR enabled maps to prometheus_cr.enabled",
+			flagArgs:    []string{"--" + prometheusCREnabledFlagName, "true"},
+			flagName:    prometheusCREnabledFlagName,
+			expectedKey: "prometheus_cr.enabled",
 		},
 		{
-			name:          "GetPrometheusCREnabled",
-			flagArgs:      []string{"--" + prometheusCREnabledFlagName, "true"},
-			expectedValue: true,
-			getterFunc: func(fs *pflag.FlagSet) (any, error) {
-				value, _, err := getPrometheusCREnabled(fs)
-				return value, err
-			},
+			name:        "https enabled maps to https.enabled",
+			flagArgs:    []string{"--" + httpsEnabledFlagName, "true"},
+			flagName:    httpsEnabledFlagName,
+			expectedKey: "https.enabled",
 		},
 		{
-			name:        "InvalidFlag",
-			flagArgs:    []string{"--invalid-flag", "value"},
-			expectedErr: true,
-			getterFunc:  func(fs *pflag.FlagSet) (any, error) { return getConfigFilePath(fs) },
+			name:        "https key file maps to https.tls_key_file_path",
+			flagArgs:    []string{"--" + httpsTLSKeyFilePathFlagName, "/path/to/tls.key"},
+			flagName:    httpsTLSKeyFilePathFlagName,
+			expectedKey: "https.tls_key_file_path",
 		},
 		{
-			name:          "HttpsServer",
-			flagArgs:      []string{"--" + httpsEnabledFlagName, "true"},
-			expectedValue: true,
-			getterFunc: func(fs *pflag.FlagSet) (any, error) {
-				value, _, err := getHttpsEnabled(fs)
-				return value, err
-			},
+			name:       "unchanged flag is skipped",
+			flagArgs:   []string{},
+			flagName:   listenAddrFlagName,
+			expectSkip: true,
 		},
 		{
-			name:          "HttpsServerKey",
-			flagArgs:      []string{"--" + httpsTLSKeyFilePathFlagName, "/path/to/tls.key"},
-			expectedValue: "/path/to/tls.key",
-			getterFunc: func(fs *pflag.FlagSet) (any, error) {
-				value, _, err := getHttpsTLSKeyFilePath(fs)
-				return value, err
-			},
+			name:       "config-file flag is not mapped",
+			flagArgs:   []string{"--" + configFilePathFlagName, "/some/path"},
+			flagName:   configFilePathFlagName,
+			expectSkip: true,
 		},
 	}
 
@@ -92,16 +76,27 @@ func TestFlagGetters(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fs := getFlagSet(pflag.ContinueOnError)
 			err := fs.Parse(tt.flagArgs)
-
-			// If an error is expected during parsing, we check it here.
-			if tt.expectedErr {
-				assert.Error(t, err)
-				return
-			}
-
-			got, err := tt.getterFunc(fs)
 			assert.NoError(t, err)
-			assert.Equal(t, tt.expectedValue, got)
+
+			f := fs.Lookup(tt.flagName)
+			assert.NotNil(t, f)
+
+			key, _ := flagToConfigKey(fs)(f)
+			if tt.expectSkip {
+				assert.Empty(t, key, "expected flag to be skipped")
+			} else {
+				assert.Equal(t, tt.expectedKey, key)
+			}
 		})
 	}
+}
+
+func TestGetConfigFilePath(t *testing.T) {
+	fs := getFlagSet(pflag.ContinueOnError)
+	err := fs.Parse([]string{"--" + configFilePathFlagName, "/path/to/config"})
+	assert.NoError(t, err)
+
+	got, err := getConfigFilePath(fs)
+	assert.NoError(t, err)
+	assert.Equal(t, "/path/to/config", got)
 }

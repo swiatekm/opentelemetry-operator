@@ -217,7 +217,14 @@ require (
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 )
 
-require github.com/openshift/controller-runtime-common v0.0.0-20260210092218-8eef974290cd
+require (
+	github.com/knadh/koanf/parsers/yaml v1.1.0
+	github.com/knadh/koanf/providers/env v1.1.0
+	github.com/knadh/koanf/providers/file v1.2.1
+	github.com/knadh/koanf/providers/posflag v1.0.1
+	github.com/knadh/koanf/v2 v2.3.3
+	github.com/openshift/controller-runtime-common v0.0.0-20260210092218-8eef974290cd
+)
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.41.1 // indirect
@@ -258,7 +265,10 @@ require (
 	github.com/gophercloud/gophercloud/v2 v2.9.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.18.2 // indirect
+	github.com/knadh/koanf/maps v0.1.2 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
+	github.com/mitchellh/copystructure v1.2.0 // indirect
+	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/moby/sys/sequential v0.6.0 // indirect
 	github.com/openshift/library-go v0.0.0-20260210145149-d0e860e8d752 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
