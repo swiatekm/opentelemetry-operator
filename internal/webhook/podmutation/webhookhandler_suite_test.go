@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/goleak"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -45,8 +46,6 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	ctx, cancel = context.WithCancel(context.TODO())
-	defer cancel()
 	utilruntime.Must(v1alpha1.AddToScheme(testScheme))
 	utilruntime.Must(v1beta1.AddToScheme(testScheme))
 
@@ -101,8 +100,9 @@ func TestMain(m *testing.M) {
 	}
 
 	ctx, cancel = context.WithCancel(context.TODO())
-	defer cancel()
+	mgrDone := make(chan struct{})
 	go func() {
+		defer close(mgrDone)
 		if err = mgr.Start(ctx); err != nil {
 			fmt.Printf("failed to start manager: %v", err)
 			os.Exit(1)
@@ -144,11 +144,17 @@ func TestMain(m *testing.M) {
 
 	code := m.Run()
 
+	cancel()
+	<-mgrDone
+
 	err = testEnv.Stop()
 	if err != nil {
 		fmt.Printf("failed to stop testEnv: %v", err)
 		os.Exit(1)
 	}
-
+	if leakErr := goleak.Find(); leakErr != nil && code == 0 {
+		fmt.Println(leakErr)
+		code = 1
+	}
 	os.Exit(code)
 }

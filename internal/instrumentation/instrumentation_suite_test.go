@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"go.uber.org/goleak"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -52,6 +53,9 @@ func TestMain(m *testing.M) {
 		fmt.Printf("failed to stop testEnv: %v", err)
 		os.Exit(1)
 	}
-
+	if leakErr := goleak.Find(); leakErr != nil && code == 0 {
+		fmt.Println(leakErr)
+		code = 1
+	}
 	os.Exit(code)
 }

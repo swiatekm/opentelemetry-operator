@@ -307,7 +307,8 @@ func TestDiscovery_ScrapeConfigHashing(t *testing.T) {
 	)
 
 	scu := &mockScrapeConfigUpdater{}
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
 	registry := prometheus.NewRegistry()
 	sdMetrics, err := discovery.CreateAndRegisterSDMetrics(registry)
 	require.NoError(t, err)

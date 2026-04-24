@@ -4,6 +4,7 @@
 package config
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -19,14 +20,30 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
 func TestMain(m *testing.M) {
-	// Set up logger for tests
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
-	os.Exit(m.Run())
+	goleak.VerifyTestMain(m)
+}
+
+// startAndCleanupCertWatcher starts the certWatcher in a goroutine and registers
+// a t.Cleanup to cancel it, closing the underlying fsnotify watcher.
+func startAndCleanupCertWatcher(t *testing.T, cw interface{ Start(context.Context) error }) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = cw.Start(ctx)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
 }
 
 // generateTestCertificate generates a self-signed certificate for testing.
@@ -95,6 +112,7 @@ func TestNewTLSConfig_LoadsCertificates(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, tlsConfig)
 	require.NotNil(t, certWatcher)
+	startAndCleanupCertWatcher(t, certWatcher)
 
 	// Verify TLS config settings
 	assert.Equal(t, tls.RequestClientCert, tlsConfig.ClientAuth)
@@ -230,10 +248,11 @@ func TestNewTLSConfig_VerifyConnection_WithIntermediateCertificates(t *testing.T
 	}
 
 	logger := ctrl.Log.WithName("test")
-	tlsConfig, _, err := config.NewTLSConfig(logger)
+	tlsConfig, certWatcher, err := config.NewTLSConfig(logger)
 	require.NoError(t, err)
 	require.NotNil(t, tlsConfig)
 	require.NotNil(t, tlsConfig.VerifyConnection)
+	startAndCleanupCertWatcher(t, certWatcher)
 
 	tests := []struct {
 		name          string
@@ -301,8 +320,9 @@ func TestNewTLSConfig_VerifyConnection_OnlyVerifiesLeafCertificate(t *testing.T)
 	}
 
 	logger := ctrl.Log.WithName("test")
-	tlsConfig, _, err := config.NewTLSConfig(logger)
+	tlsConfig, certWatcher, err := config.NewTLSConfig(logger)
 	require.NoError(t, err)
+	startAndCleanupCertWatcher(t, certWatcher)
 
 	// Test that verification succeeds with correct chain order (leaf first, then intermediate)
 	cs := tls.ConnectionState{

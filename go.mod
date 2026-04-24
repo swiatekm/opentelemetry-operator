@@ -61,6 +61,7 @@ require (
 	sigs.k8s.io/controller-runtime v0.23.3
 	sigs.k8s.io/gateway-api v1.5.1
 	sigs.k8s.io/yaml v1.6.0
+	go.uber.org/goleak v1.3.0
 )
 
 require (

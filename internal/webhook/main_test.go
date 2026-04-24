@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"testing"
 
+	"go.uber.org/goleak"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -50,6 +51,10 @@ func TestMain(m *testing.M) {
 	if err := testEnv.Stop(); err != nil {
 		fmt.Printf("failed to stop test environment: %v", err)
 		os.Exit(1)
+	}
+	if leakErr := goleak.Find(); leakErr != nil && code == 0 {
+		fmt.Println(leakErr)
+		code = 1
 	}
 	os.Exit(code)
 }

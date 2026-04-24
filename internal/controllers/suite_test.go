@@ -19,6 +19,7 @@ import (
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	v1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -170,8 +171,6 @@ func (m *mockAutoDetect) GatewayAPIsAvailability() (gatewayapi.ApiAvailability, 
 
 func TestMain(m *testing.M) {
 	var err error
-	ctx, cancel = context.WithCancel(context.TODO())
-	defer cancel()
 
 	// logging is useful for these tests
 	logf.SetLogger(zap.New())
@@ -248,8 +247,9 @@ func TestMain(m *testing.M) {
 	}
 
 	ctx, cancel = context.WithCancel(context.TODO())
-	defer cancel()
+	mgrDone := make(chan struct{})
 	go func() {
+		defer close(mgrDone)
 		if err = mgr.Start(ctx); err != nil {
 			fmt.Printf("failed to start manager: %v", err)
 			os.Exit(1)
@@ -291,12 +291,18 @@ func TestMain(m *testing.M) {
 
 	code := m.Run()
 
+	cancel()
+	<-mgrDone
+
 	err = testEnv.Stop()
 	if err != nil {
 		fmt.Printf("failed to stop testEnv: %v", err)
 		os.Exit(1)
 	}
-
+	if leakErr := goleak.Find(); leakErr != nil && code == 0 {
+		fmt.Println(leakErr)
+		code = 1
+	}
 	os.Exit(code)
 }
 
