@@ -161,6 +161,13 @@ jobs:
         name: e2e-junit-${{ matrix.group }}-${{ matrix.kube-version }}
         retention-days: 7
         overwrite: true
+    - name: Upload test results to Codecov
+      if: always()
+      uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe # v5.5.4
+      with:
+        report_type: test_results
+        files: .testresults/e2e/*.xml
+        token: ${{ secrets.CODECOV_TOKEN }}
 
   e2e-tests-check:
     runs-on: ubuntu-latest
@@ -180,15 +187,3 @@ jobs:
             echo "One or more matrix jobs failed."
             false
           fi
-  # This event file is used by the JUnit report action in e2e-junit-report.yaml
-  event_file:
-    name: "Event File"
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-    - name: Upload
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      with:
-        name: Event File
-        path: ${{ github.event_path }}
-        overwrite: true
