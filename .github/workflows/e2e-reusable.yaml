@@ -8,6 +8,10 @@ on:
         required: false
         type: string
         default: ""
+    secrets:
+      CODECOV_TOKEN:
+        description: "Token for uploading test results to Codecov"
+        required: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
