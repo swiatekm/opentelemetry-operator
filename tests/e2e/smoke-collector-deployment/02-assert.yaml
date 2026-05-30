@@ -1,0 +1,11 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smoke-collector-collector
+spec:
+  template:
+    spec:
+      # no operator-managed extra arg remains after the field is removed
+      (length(containers[?name == 'otc-container'].args[] | [?starts_with(@, '--extra-arg')])): 0
+status:
+  readyReplicas: 1

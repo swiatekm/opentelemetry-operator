@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: smoke-collector-deployment
+# Consolidated smoke test for the OpenTelemetryCollector "deployment" mode.
+# Verifies that the pod-spec / service fields set on the CR are propagated to the
+# reconciled Deployment and Service. Replaces the per-attribute tests:
+# affinity-collector, args-collector, additional-containers-collector,
+# node-selector-collector, smoke-init-containers, smoke-dns-config,
+# smoke-pod-annotations, smoke-pod-labels, smoke-shareprocessnamespace,
+# smoke-ports, smoke-ip-families and smoke-simplest(-v1beta1).
+spec:
+  steps:
+    - name: install
+      description: install a collector with all propagatable fields set
+      try:
+        - apply:
+            file: 00-install.yaml
+        - assert:
+            file: 00-assert.yaml
+    - name: update
+      description: change a field to exercise the update reconcile path
+      try:
+        - update:
+            file: 01-update.yaml
+        - assert:
+            file: 01-assert.yaml
+    - name: delete
+      description: remove a field to exercise the prune reconcile path
+      try:
+        - update:
+            file: 02-delete.yaml
+        - assert:
+            file: 02-assert.yaml
