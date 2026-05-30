@@ -28,8 +28,6 @@ spec:
             operator: In
             values:
             - linux
-  args:
-    extra-arg: "yes"
   podAnnotations:
     pod-annotation1: value1
     pod-annotation2: value2

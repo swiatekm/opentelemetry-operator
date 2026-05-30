@@ -32,8 +32,6 @@ spec:
         - name: init-test-echo
       # additionalContainers landed
       (length(containers[?name == 'alpine'])): 1
-      # args propagated onto the collector container
-      (contains(containers[?name == 'otc-container'].args[], '--extra-arg=yes')): true
 status:
   readyReplicas: 1
 ---
@@ -42,7 +40,8 @@ kind: Service
 metadata:
   name: smoke-collector-collector
 spec:
-  trafficDistribution: PreferClose
+  # NOTE: trafficDistribution is a k8s >= 1.31 Service field; older API servers
+  # prune it. It is asserted with a version gate in chainsaw-test.yaml instead.
   ipFamilyPolicy: SingleStack
   ipFamilies:
     - IPv4

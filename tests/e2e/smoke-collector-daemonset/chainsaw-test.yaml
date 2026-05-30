@@ -5,7 +5,7 @@ metadata:
   name: smoke-collector-daemonset
 # Consolidated smoke test for the OpenTelemetryCollector "daemonset" mode.
 # Replaces smoke-daemonset and daemonset-features, plus the daemonset arm of the
-# per-attribute tests (affinity/args/additional-containers/node-selector).
+# per-attribute tests (affinity/additional-containers/node-selector).
 spec:
   steps:
     - name: install

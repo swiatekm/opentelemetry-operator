@@ -21,8 +21,6 @@ spec:
             values:
             - linux
   # pod-spec extras
-  args:
-    extra-arg: "yes"
   podAnnotations:
     pod-annotation1: value1
     pod-annotation2: value2

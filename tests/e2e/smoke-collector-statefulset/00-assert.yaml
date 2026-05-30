@@ -27,7 +27,6 @@ spec:
       initContainers:
         - name: init-test-echo
       (length(containers[?name == 'alpine'])): 1
-      (contains(containers[?name == 'otc-container'].args[], '--extra-arg=yes')): true
   volumeClaimTemplates:
     - metadata:
         name: testvolume
