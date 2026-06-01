@@ -185,11 +185,25 @@ jobs:
       with:
         pattern: e2e-junit-*
         path: .testresults/e2e
+    # download-artifact unpacks each artifact into its own subdirectory as
+    # <report-name>.xml. Codecov's test-results finder only matches basenames
+    # like *junit*.xml/*test*.xml, so flatten every report into a junit-named
+    # file. Prefixing with the artifact directory (which carries the group and
+    # kube version) keeps names unique across matrix cells.
+    - name: Collect JUnit reports for Codecov
+      run: |
+        set -euo pipefail
+        mkdir -p .testresults/junit
+        find .testresults/e2e -name '*.xml' -print0 | while IFS= read -r -d '' f; do
+          artifact=$(basename "$(dirname "$f")")
+          cp "$f" ".testresults/junit/${artifact}-$(basename "$f")"
+        done
+        ls -l .testresults/junit
     - name: Upload test results to Codecov
       uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe # v5.5.4
       with:
         report_type: test_results
-        directory: .testresults/e2e
+        directory: .testresults/junit
         token: ${{ secrets.CODECOV_TOKEN }}
 
   e2e-tests-check:
