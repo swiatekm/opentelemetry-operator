@@ -25,8 +25,18 @@ func newPerNodeStrategy() Strategy {
 	}
 }
 
-func (s *perNodeStrategy) SetFallbackStrategy(fallbackStrategy Strategy) {
+func (s *perNodeStrategy) SetConfig(config StrategyConfig) error {
+	fallbackStrategyName := config.PerNode.FallbackStrategy
+	if fallbackStrategyName == "" {
+		s.fallbackStrategy = nil
+		return nil
+	}
+	fallbackStrategy, ok := strategies[fallbackStrategyName]
+	if !ok {
+		return fmt.Errorf("unregistered strategy used as fallback: %s", fallbackStrategyName)
+	}
 	s.fallbackStrategy = fallbackStrategy
+	return nil
 }
 
 func (*perNodeStrategy) GetName() string {

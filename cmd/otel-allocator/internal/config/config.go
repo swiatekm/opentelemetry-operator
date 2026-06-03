@@ -83,8 +83,16 @@ type Config struct {
 // AllocationStrategyConfig holds the per-strategy configuration for allocation strategies.
 // Each allocation strategy has its own section because strategies accept different configuration options.
 type AllocationStrategyConfig struct {
-	PerNode PerNodeStrategyConfig `yaml:"per_node,omitempty"`
+	ConsistentHashing ConsistentHashingStrategyConfig `yaml:"consistent_hashing,omitempty"`
+	LeastWeighted     LeastWeightedStrategyConfig     `yaml:"least_weighted,omitempty"`
+	PerNode           PerNodeStrategyConfig           `yaml:"per_node,omitempty"`
 }
+
+// ConsistentHashingStrategyConfig holds the configuration options for the consistent-hashing allocation strategy.
+type ConsistentHashingStrategyConfig struct{}
+
+// LeastWeightedStrategyConfig holds the configuration options for the least-weighted allocation strategy.
+type LeastWeightedStrategyConfig struct{}
 
 // PerNodeStrategyConfig holds the configuration options for the per-node allocation strategy.
 type PerNodeStrategyConfig struct {

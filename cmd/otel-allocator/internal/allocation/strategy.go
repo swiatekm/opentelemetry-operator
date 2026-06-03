@@ -20,25 +20,44 @@ var strategies = map[string]Strategy{
 	perNodeStrategyName:           newPerNodeStrategy(),
 }
 
-type Option func(Allocator)
+type Option func(Allocator) error
 
 type Filter interface {
 	Apply([]*target.Item) []*target.Item
 }
 
+// StrategyConfig holds the configuration for the allocation strategies. Each strategy has its own
+// section because strategies accept different configuration options.
+type StrategyConfig struct {
+	ConsistentHashing ConsistentHashingStrategyConfig
+	LeastWeighted     LeastWeightedStrategyConfig
+	PerNode           PerNodeStrategyConfig
+}
+
+// ConsistentHashingStrategyConfig holds the configuration options for the consistent-hashing strategy.
+type ConsistentHashingStrategyConfig struct{}
+
+// LeastWeightedStrategyConfig holds the configuration options for the least-weighted strategy.
+type LeastWeightedStrategyConfig struct{}
+
+// PerNodeStrategyConfig holds the configuration options for the per-node strategy.
+type PerNodeStrategyConfig struct {
+	// FallbackStrategy is the name of the strategy used for targets the per-node strategy can't assign on
+	// its own, for example targets which don't have a node label. If empty, such targets are left unassigned.
+	FallbackStrategy string
+}
+
 func WithFilter(filter Filter) Option {
-	return func(allocator Allocator) {
+	return func(allocator Allocator) error {
 		allocator.SetFilter(filter)
+		return nil
 	}
 }
 
-func WithFallbackStrategy(fallbackStrategy string) Option {
-	strategy, ok := strategies[fallbackStrategy]
-	if fallbackStrategy != "" && !ok {
-		panic(fmt.Errorf("unregistered strategy used as fallback: %s", fallbackStrategy))
-	}
-	return func(allocator Allocator) {
-		allocator.SetFallbackStrategy(strategy)
+// WithStrategyConfig passes the strategy configuration to the allocator's strategy.
+func WithStrategyConfig(config StrategyConfig) Option {
+	return func(allocator Allocator) error {
+		return allocator.SetConfig(config)
 	}
 }
 
@@ -64,7 +83,7 @@ type Allocator interface {
 	Collectors() map[string]*Collector
 	GetTargetsForCollectorAndJob(collector, job string) []*target.Item
 	SetFilter(filter Filter)
-	SetFallbackStrategy(strategy Strategy)
+	SetConfig(config StrategyConfig) error
 }
 
 type Strategy interface {
@@ -74,8 +93,9 @@ type Strategy interface {
 	// SetCollectors call. Strategies which don't need this information can just ignore it.
 	SetCollectors(map[string]*Collector)
 	GetName() string
-	// SetFallbackStrategy adds fallback strategy for strategies whose main allocation method can sometimes leave targets unassigned
-	SetFallbackStrategy(Strategy)
+	// SetConfig applies the strategy configuration. It is called once when the allocator is created. Strategies
+	// only need to read the section of the configuration relevant to them and can ignore the rest.
+	SetConfig(StrategyConfig) error
 }
 
 var _ consistent.Member = Collector{}

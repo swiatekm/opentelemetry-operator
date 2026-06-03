@@ -72,4 +72,4 @@ func (s *consistentHashingStrategy) SetCollectors(collectors map[string]*Collect
 	s.consistentHasher = consistent.New(members, s.config)
 }
 
-func (*consistentHashingStrategy) SetFallbackStrategy(Strategy) {}
+func (*consistentHashingStrategy) SetConfig(StrategyConfig) error { return nil }

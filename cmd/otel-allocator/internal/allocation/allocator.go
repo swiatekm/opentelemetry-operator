@@ -68,7 +68,9 @@ func newAllocator(log logr.Logger, strategy Strategy, opts ...Option) (Allocator
 		targetsUnassigned:             targetsUnassigned,
 	}
 	for _, opt := range opts {
-		opt(chAllocator)
+		if err := opt(chAllocator); err != nil {
+			return nil, err
+		}
 	}
 
 	return chAllocator, nil
@@ -106,9 +108,9 @@ func (a *allocator) SetFilter(filter Filter) {
 	a.filter = filter
 }
 
-// SetFallbackStrategy sets the fallback strategy to use.
-func (a *allocator) SetFallbackStrategy(strategy Strategy) {
-	a.strategy.SetFallbackStrategy(strategy)
+// SetConfig applies the strategy configuration to the allocator's strategy.
+func (a *allocator) SetConfig(config StrategyConfig) error {
+	return a.strategy.SetConfig(config)
 }
 
 // SetTargets accepts a list of targets that will be used to make
