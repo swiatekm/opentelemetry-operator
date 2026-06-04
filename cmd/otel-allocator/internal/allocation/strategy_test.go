@@ -14,11 +14,6 @@ import (
 )
 
 func TestNewWithStrategyConfig(t *testing.T) {
-	// Reset the per-node strategy's shared state after the test, since the registered strategies are singletons.
-	t.Cleanup(func() {
-		require.NoError(t, strategies[perNodeStrategyName].SetConfig(StrategyConfig{}))
-	})
-
 	t.Run("per-node resolves a registered fallback strategy", func(t *testing.T) {
 		a, err := New(perNodeStrategyName, logger, WithStrategyConfig(StrategyConfig{
 			PerNode: PerNodeStrategyConfig{FallbackStrategy: consistentHashingStrategyName},

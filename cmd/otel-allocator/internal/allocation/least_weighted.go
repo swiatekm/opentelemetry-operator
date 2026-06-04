@@ -50,5 +50,3 @@ func (*leastWeightedStrategy) GetCollectorForTarget(collectors map[string]*Colle
 }
 
 func (*leastWeightedStrategy) SetCollectors(map[string]*Collector) {}
-
-func (*leastWeightedStrategy) SetConfig(StrategyConfig) error { return nil }

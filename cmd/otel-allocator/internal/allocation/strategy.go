@@ -12,15 +12,38 @@ import (
 	"github.com/open-telemetry/opentelemetry-operator/cmd/otel-allocator/internal/target"
 )
 
-type AllocatorProvider func(log logr.Logger, opts ...Option) Allocator
+// resolveStrategy builds a strategy by name. It is passed to strategy builders so they can construct the
+// strategies they depend on without referring to package-level state, which would otherwise create an
+// initialization cycle with strategyBuilders.
+type resolveStrategy func(name string, config StrategyConfig) (Strategy, error)
 
-var strategies = map[string]Strategy{
-	leastWeightedStrategyName:     newleastWeightedStrategy(),
-	consistentHashingStrategyName: newConsistentHashingStrategy(),
-	perNodeStrategyName:           newPerNodeStrategy(),
+// strategyBuilder constructs a Strategy from the allocation strategy configuration. A builder reads only
+// the configuration relevant to its strategy and uses resolve to construct any strategies its strategy
+// depends on (e.g. a fallback strategy), which are then injected into the strategy's constructor.
+type strategyBuilder func(config StrategyConfig, resolve resolveStrategy) (Strategy, error)
+
+var strategyBuilders = map[string]strategyBuilder{
+	leastWeightedStrategyName:     func(StrategyConfig, resolveStrategy) (Strategy, error) { return newleastWeightedStrategy(), nil },
+	consistentHashingStrategyName: func(StrategyConfig, resolveStrategy) (Strategy, error) { return newConsistentHashingStrategy(), nil },
+	perNodeStrategyName:           buildPerNodeStrategy,
 }
 
-type Option func(Allocator) error
+// buildStrategy constructs the named strategy, resolving and injecting any strategies it depends on.
+func buildStrategy(name string, config StrategyConfig) (Strategy, error) {
+	build, ok := strategyBuilders[name]
+	if !ok {
+		return nil, fmt.Errorf("unregistered strategy: %s", name)
+	}
+	return build(config, buildStrategy)
+}
+
+// Option configures the allocator constructed by New.
+type Option func(*allocatorOptions)
+
+type allocatorOptions struct {
+	filter         Filter
+	strategyConfig StrategyConfig
+}
 
 type Filter interface {
 	Apply([]*target.Item) []*target.Item
@@ -29,16 +52,8 @@ type Filter interface {
 // StrategyConfig holds the configuration for the allocation strategies. Each strategy has its own
 // section because strategies accept different configuration options.
 type StrategyConfig struct {
-	ConsistentHashing ConsistentHashingStrategyConfig
-	LeastWeighted     LeastWeightedStrategyConfig
-	PerNode           PerNodeStrategyConfig
+	PerNode PerNodeStrategyConfig
 }
-
-// ConsistentHashingStrategyConfig holds the configuration options for the consistent-hashing strategy.
-type ConsistentHashingStrategyConfig struct{}
-
-// LeastWeightedStrategyConfig holds the configuration options for the least-weighted strategy.
-type LeastWeightedStrategyConfig struct{}
 
 // PerNodeStrategyConfig holds the configuration options for the per-node strategy.
 type PerNodeStrategyConfig struct {
@@ -48,29 +63,40 @@ type PerNodeStrategyConfig struct {
 }
 
 func WithFilter(filter Filter) Option {
-	return func(allocator Allocator) error {
-		allocator.SetFilter(filter)
-		return nil
+	return func(o *allocatorOptions) {
+		o.filter = filter
 	}
 }
 
-// WithStrategyConfig passes the strategy configuration to the allocator's strategy.
+// WithStrategyConfig sets the configuration used to construct the allocator's strategy.
 func WithStrategyConfig(config StrategyConfig) Option {
-	return func(allocator Allocator) error {
-		return allocator.SetConfig(config)
+	return func(o *allocatorOptions) {
+		o.strategyConfig = config
 	}
 }
 
 func New(name string, log logr.Logger, opts ...Option) (Allocator, error) {
-	if strategy, ok := strategies[name]; ok {
-		return newAllocator(log.WithValues("allocator", name), strategy, opts...)
+	var options allocatorOptions
+	for _, opt := range opts {
+		opt(&options)
 	}
-	return nil, fmt.Errorf("unregistered strategy: %s", name)
+	strategy, err := buildStrategy(name, options.strategyConfig)
+	if err != nil {
+		return nil, err
+	}
+	allocator, err := newAllocator(log.WithValues("allocator", name), strategy)
+	if err != nil {
+		return nil, err
+	}
+	if options.filter != nil {
+		allocator.SetFilter(options.filter)
+	}
+	return allocator, nil
 }
 
 func GetRegisteredAllocatorNames() []string {
 	var names []string
-	for s := range strategies {
+	for s := range strategyBuilders {
 		names = append(names, s)
 	}
 	return names
@@ -83,7 +109,6 @@ type Allocator interface {
 	Collectors() map[string]*Collector
 	GetTargetsForCollectorAndJob(collector, job string) []*target.Item
 	SetFilter(filter Filter)
-	SetConfig(config StrategyConfig) error
 }
 
 type Strategy interface {
@@ -93,9 +118,6 @@ type Strategy interface {
 	// SetCollectors call. Strategies which don't need this information can just ignore it.
 	SetCollectors(map[string]*Collector)
 	GetName() string
-	// SetConfig applies the strategy configuration. It is called once when the allocator is created. Strategies
-	// only need to read the section of the configuration relevant to them and can ignore the rest.
-	SetConfig(StrategyConfig) error
 }
 
 var _ consistent.Member = Collector{}
