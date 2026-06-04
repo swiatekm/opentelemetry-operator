@@ -30,7 +30,7 @@ import (
 
 var _ Allocator = &allocator{}
 
-func newAllocator(log logr.Logger, strategy Strategy, opts ...Option) (Allocator, error) {
+func newAllocator(log logr.Logger, strategy Strategy) (Allocator, error) {
 	meter := otel.GetMeterProvider().Meter("targetallocator")
 	// targetsPerCollector records how many targets have been assigned to each collector.
 	// It is currently the responsibility of the strategy to track this information.
@@ -67,9 +67,6 @@ func newAllocator(log logr.Logger, strategy Strategy, opts ...Option) (Allocator
 		targetsRemaining:              targetsRemaining,
 		targetsUnassigned:             targetsUnassigned,
 	}
-	for _, opt := range opts {
-		opt(chAllocator)
-	}
 
 	return chAllocator, nil
 }
@@ -104,11 +101,6 @@ type allocator struct {
 // SetFilter sets the filtering hook to use.
 func (a *allocator) SetFilter(filter Filter) {
 	a.filter = filter
-}
-
-// SetFallbackStrategy sets the fallback strategy to use.
-func (a *allocator) SetFallbackStrategy(strategy Strategy) {
-	a.strategy.SetFallbackStrategy(strategy)
 }
 
 // SetTargets accepts a list of targets that will be used to make
