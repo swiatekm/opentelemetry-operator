@@ -67,46 +67,17 @@ jobs:
         kube-version:
         - "1.25"
         - "1.35"
+        # TEMPORARY (stress test): scoped to the multi-instrumentation suite and
+        # repeated 10x (CHAINSAW_REPEAT_COUNT in the "Run e2e tests" step) to verify
+        # the e2e flakiness fix. Restore the full group/include lists before merging.
         group:
-        - e2e
-        - e2e-automatic-rbac
-        - e2e-autoscale
-        - e2e-instrumentation-default
-        - e2e-instrumentation
-        - e2e-no-crds
-        - e2e-opampbridge
-        - e2e-pdb
-        - e2e-prometheuscr
-        - e2e-sidecar
-        - e2e-targetallocator
-        - e2e-targetallocator-cr
-        # https://github.com/open-telemetry/opentelemetry-operator/issues/4887
-        - e2e-upgrade
         - e2e-multi-instrumentation-default
         - e2e-multi-instrumentation
-        - e2e-metadata-filters
-        - e2e-ta-collector-mtls
-        - e2e-crd-validations
-        - e2e-ta-standalone
         include:
-        - group: e2e-instrumentation-default
-          setup: "add-instrumentation-params prepare-e2e"
-        - group: e2e-instrumentation
-          setup: "add-instrumentation-params add-instrumentation-images prepare-e2e"
         - group: e2e-multi-instrumentation-default
           setup: "add-instrumentation-params prepare-e2e"
         - group: e2e-multi-instrumentation
           setup: "add-instrumentation-params add-instrumentation-images prepare-e2e"
-        - group: e2e-metadata-filters
-          setup: "add-operator-arg OPERATOR_ARG='--annotations-filter=.*filter.out --annotations-filter=config.*.gke.io.* --labels-filter=.*filter.out' prepare-e2e"
-        - group: e2e-ta-collector-mtls
-          setup: "add-certmanager-permissions prepare-e2e"
-        - group: e2e-automatic-rbac
-          setup: "add-rbac-permissions-to-operator prepare-e2e"
-        - group: e2e-ta-standalone
-          setup: "prepare-e2e-ta-standalone"
-        - group: e2e-no-crds
-          setup: "prepare-e2e-no-crds"
 
     steps:
     - name: Check out code into the Go module directory
@@ -147,6 +118,8 @@ jobs:
     - name: Run e2e tests
       env:
         KUBE_VERSION: ${{ matrix.kube-version }}
+        # TEMPORARY (stress test): repeat each multi-instrumentation test 10x.
+        CHAINSAW_REPEAT_COUNT: "10"
       run: |
         set -e
         make ${{ matrix.group }}

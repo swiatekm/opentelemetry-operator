@@ -451,7 +451,7 @@ e2e-multi-instrumentation-default: e2e-multi-instrumentation
 # end-to-tests for multi-instrumentation
 .PHONY: e2e-multi-instrumentation
 e2e-multi-instrumentation: chainsaw
-	$(CHAINSAW) test --test-dir ./tests/e2e-multi-instrumentation --report-name e2e-multi-instrumentation
+	$(CHAINSAW) test --test-dir ./tests/e2e-multi-instrumentation --report-name e2e-multi-instrumentation --repeat-count $(CHAINSAW_REPEAT_COUNT)
 
 # OpAMPBridge CR end-to-tests
 .PHONY: e2e-opampbridge
@@ -748,6 +748,8 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 CHLOGGEN ?= $(LOCALBIN)/chloggen
 GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 CHAINSAW ?= $(LOCALBIN)/chainsaw
+# Number of times chainsaw repeats each test. Bumped in CI to stress-test for flakiness.
+CHAINSAW_REPEAT_COUNT ?= 1
 GOTESTSUM ?= $(LOCALBIN)/gotestsum
 GOVULNCHECK ?= $(LOCALBIN)/govulncheck
 
