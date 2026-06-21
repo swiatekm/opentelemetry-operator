@@ -1,0 +1,15 @@
+# Selects the sample app's Service and its named `metrics` port, labels itself .Group
+# (so one side's selector picks it), and relabels every target with a constant
+# `pipeline` label so the two pipelines can be told apart in one Prometheus.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata: {name: {{ .Name }}, labels: {group: {{ .Group }}}}
+spec:
+  selector:
+    matchLabels: {app: sample-app}
+  endpoints:
+    - port: metrics
+      interval: 5s
+      relabelings:
+        - targetLabel: pipeline
+          replacement: {{ .Pipeline }}
