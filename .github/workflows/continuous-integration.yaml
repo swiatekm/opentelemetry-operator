@@ -53,12 +53,14 @@ jobs:
       uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
       continue-on-error: true
       with:
+        token: ${{ secrets.CODECOV_TOKEN }}
         files: ./coverage.out
         flags: unittests
     - name: Upload integration-test coverage to Codecov
       uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
       continue-on-error: true
       with:
+        token: ${{ secrets.CODECOV_TOKEN }}
         files: ./coverage-integration.out
         flags: integration
 

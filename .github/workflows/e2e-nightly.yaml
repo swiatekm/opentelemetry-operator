@@ -15,6 +15,8 @@ jobs:
     uses: ./.github/workflows/e2e-reusable.yaml
     with:
       collector-image: "otel/opentelemetry-collector-contrib-dev:latest"
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   retry-on-failure:
     needs: [run-e2e-tests]
@@ -22,6 +24,8 @@ jobs:
     uses: ./.github/workflows/e2e-reusable.yaml
     with:
       collector-image: "otel/opentelemetry-collector-contrib-dev:latest"
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   create-issue-on-failure:
     runs-on: ubuntu-latest
