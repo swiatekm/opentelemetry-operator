@@ -84,7 +84,12 @@ func main() {
 	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(metricExporter))
 	otel.SetMeterProvider(meterProvider)
 
-	allocator, allocErr := allocation.New(cfg.AllocationStrategy, log, allocation.WithFallbackStrategy(cfg.AllocationFallbackStrategy))
+	strategyConfig := allocation.StrategyConfig{
+		PerNode: allocation.PerNodeStrategyConfig{
+			FallbackStrategy: cfg.GetTargetAllocatorFallbackStrategy(),
+		},
+	}
+	allocator, allocErr := allocation.New(cfg.AllocationStrategy, log, allocation.WithStrategyConfig(strategyConfig))
 	if allocErr != nil {
 		setupLog.Error(allocErr, "Unable to initialize allocation strategy")
 		os.Exit(1)

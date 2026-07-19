@@ -18,15 +18,26 @@ type perNodeStrategy struct {
 	fallbackStrategy Strategy
 }
 
-func newPerNodeStrategy() Strategy {
+// newPerNodeStrategy constructs a per-node strategy. The fallbackStrategy, which may be nil, is used to
+// assign targets the per-node strategy can't assign on its own.
+func newPerNodeStrategy(fallbackStrategy Strategy) Strategy {
 	return &perNodeStrategy{
 		collectorByNode:  make(map[string]*Collector),
-		fallbackStrategy: nil,
+		fallbackStrategy: fallbackStrategy,
 	}
 }
 
-func (s *perNodeStrategy) SetFallbackStrategy(fallbackStrategy Strategy) {
-	s.fallbackStrategy = fallbackStrategy
+// buildPerNodeStrategy resolves the configured fallback strategy and injects it into the per-node strategy.
+func buildPerNodeStrategy(config StrategyConfig, resolve resolveStrategy) (Strategy, error) {
+	var fallbackStrategy Strategy
+	if name := config.PerNode.FallbackStrategy; name != "" {
+		resolved, err := resolve(name, config)
+		if err != nil {
+			return nil, fmt.Errorf("building per-node fallback strategy: %w", err)
+		}
+		fallbackStrategy = resolved
+	}
+	return newPerNodeStrategy(fallbackStrategy), nil
 }
 
 func (*perNodeStrategy) GetName() string {
