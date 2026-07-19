@@ -65,6 +65,18 @@ targets to the same collectors, but will experience rebalancing when the collect
 
 This is the default.
 
+By default the target's URL is hashed. To instead hash a specific set of target labels — so that targets sharing the
+same values for those labels are assigned to the same collector — configure `labels`:
+
+```yaml
+allocation_strategy: consistent-hashing
+allocation_strategy_config:
+  consistent_hashing:
+    labels:
+      - namespace
+      - pod
+```
+
 #### `least-weighted`
 
 A strategy that simply assigns the target to the collector with the least number of targets. It achieves more stability

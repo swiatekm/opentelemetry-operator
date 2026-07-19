@@ -85,6 +85,9 @@ func main() {
 	otel.SetMeterProvider(meterProvider)
 
 	strategyConfig := allocation.StrategyConfig{
+		ConsistentHashing: allocation.ConsistentHashingStrategyConfig{
+			Labels: cfg.AllocationStrategyConfig.ConsistentHashing.Labels,
+		},
 		PerNode: allocation.PerNodeStrategyConfig{
 			FallbackStrategy: cfg.GetTargetAllocatorFallbackStrategy(),
 		},
