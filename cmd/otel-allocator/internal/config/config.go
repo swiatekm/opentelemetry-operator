@@ -60,20 +60,55 @@ var defaultScrapeProtocolsCR = []monitoringv1.ScrapeProtocol{
 var NopLogger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.Level(math.MaxInt)}))
 
 type Config struct {
-	ListenAddr                   string                `yaml:"listen_addr,omitempty"`
-	KubeConfigFilePath           string                `yaml:"kube_config_file_path,omitempty"`
-	ClusterConfig                *rest.Config          `yaml:"-"`
-	RootLogger                   logr.Logger           `yaml:"-"`
-	CollectorSelector            *metav1.LabelSelector `yaml:"collector_selector,omitempty"`
-	CollectorNamespace           string                `yaml:"collector_namespace,omitempty"`
-	PromConfig                   *promconfig.Config    `yaml:"config"`
-	AllocationStrategy           string                `yaml:"allocation_strategy,omitempty"`
-	AllocationFallbackStrategy   string                `yaml:"allocation_fallback_strategy,omitempty"`
-	FilterStrategy               string                `yaml:"filter_strategy,omitempty"`
-	PrometheusCR                 PrometheusCRConfig    `yaml:"prometheus_cr,omitempty"`
-	HTTPS                        HTTPSServerConfig     `yaml:"https,omitempty"`
-	CollectorNotReadyGracePeriod time.Duration         `yaml:"collector_not_ready_grace_period,omitempty"`
-	AllowInsecureAuthSecrets     bool                  `yaml:"allow_insecure_auth_secrets,omitempty"`
+	ListenAddr         string                `yaml:"listen_addr,omitempty"`
+	KubeConfigFilePath string                `yaml:"kube_config_file_path,omitempty"`
+	ClusterConfig      *rest.Config          `yaml:"-"`
+	RootLogger         logr.Logger           `yaml:"-"`
+	CollectorSelector  *metav1.LabelSelector `yaml:"collector_selector,omitempty"`
+	CollectorNamespace string                `yaml:"collector_namespace,omitempty"`
+	PromConfig         *promconfig.Config    `yaml:"config"`
+	AllocationStrategy string                `yaml:"allocation_strategy,omitempty"`
+	// AllocationFallbackStrategy is the deprecated, top-level way of setting the fallback strategy for
+	// the per-node allocation strategy. Prefer AllocationStrategyConfig.PerNode.FallbackStrategy instead.
+	// When both are set, AllocationStrategyConfig.PerNode.FallbackStrategy takes precedence.
+	AllocationFallbackStrategy   string                   `yaml:"allocation_fallback_strategy,omitempty"`
+	AllocationStrategyConfig     AllocationStrategyConfig `yaml:"allocation_strategy_config,omitempty"`
+	FilterStrategy               string                   `yaml:"filter_strategy,omitempty"`
+	PrometheusCR                 PrometheusCRConfig       `yaml:"prometheus_cr,omitempty"`
+	HTTPS                        HTTPSServerConfig        `yaml:"https,omitempty"`
+	CollectorNotReadyGracePeriod time.Duration            `yaml:"collector_not_ready_grace_period,omitempty"`
+	AllowInsecureAuthSecrets     bool                     `yaml:"allow_insecure_auth_secrets,omitempty"`
+}
+
+// AllocationStrategyConfig holds the per-strategy configuration for allocation strategies.
+// Each allocation strategy has its own section because strategies accept different configuration options.
+type AllocationStrategyConfig struct {
+	ConsistentHashing ConsistentHashingStrategyConfig `yaml:"consistent_hashing,omitempty"`
+	LeastWeighted     LeastWeightedStrategyConfig     `yaml:"least_weighted,omitempty"`
+	PerNode           PerNodeStrategyConfig           `yaml:"per_node,omitempty"`
+}
+
+// ConsistentHashingStrategyConfig holds the configuration options for the consistent-hashing allocation strategy.
+type ConsistentHashingStrategyConfig struct{}
+
+// LeastWeightedStrategyConfig holds the configuration options for the least-weighted allocation strategy.
+type LeastWeightedStrategyConfig struct{}
+
+// PerNodeStrategyConfig holds the configuration options for the per-node allocation strategy.
+type PerNodeStrategyConfig struct {
+	// FallbackStrategy is the allocation strategy used for targets the per-node strategy can't assign on its
+	// own, for example targets which don't have a node label. If empty, such targets are left unassigned.
+	FallbackStrategy string `yaml:"fallback_strategy,omitempty"`
+}
+
+// GetTargetAllocatorFallbackStrategy returns the effective fallback allocation strategy.
+// The strategy-specific allocation_strategy_config.per_node.fallback_strategy takes precedence over the
+// deprecated top-level allocation_fallback_strategy option.
+func (c *Config) GetTargetAllocatorFallbackStrategy() string {
+	if c.AllocationStrategyConfig.PerNode.FallbackStrategy != "" {
+		return c.AllocationStrategyConfig.PerNode.FallbackStrategy
+	}
+	return c.AllocationFallbackStrategy
 }
 
 type PrometheusCRConfig struct {
