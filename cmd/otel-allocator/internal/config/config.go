@@ -89,7 +89,12 @@ type AllocationStrategyConfig struct {
 }
 
 // ConsistentHashingStrategyConfig holds the configuration options for the consistent-hashing allocation strategy.
-type ConsistentHashingStrategyConfig struct{}
+type ConsistentHashingStrategyConfig struct {
+	// Labels is the set of target label names whose values are used to place a target on the hash ring.
+	// When empty, the target's URL is used, which keeps a target on the same collector regardless of its
+	// labels. When set, targets sharing the same values for these labels are assigned to the same collector.
+	Labels []string `yaml:"labels,omitempty"`
+}
 
 // LeastWeightedStrategyConfig holds the configuration options for the least-weighted allocation strategy.
 type LeastWeightedStrategyConfig struct{}

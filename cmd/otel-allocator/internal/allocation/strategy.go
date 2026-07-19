@@ -23,9 +23,11 @@ type resolveStrategy func(name string, config StrategyConfig) (Strategy, error)
 type strategyBuilder func(config StrategyConfig, resolve resolveStrategy) (Strategy, error)
 
 var strategyBuilders = map[string]strategyBuilder{
-	leastWeightedStrategyName:     func(StrategyConfig, resolveStrategy) (Strategy, error) { return newleastWeightedStrategy(), nil },
-	consistentHashingStrategyName: func(StrategyConfig, resolveStrategy) (Strategy, error) { return newConsistentHashingStrategy(), nil },
-	perNodeStrategyName:           buildPerNodeStrategy,
+	leastWeightedStrategyName: func(StrategyConfig, resolveStrategy) (Strategy, error) { return newleastWeightedStrategy(), nil },
+	consistentHashingStrategyName: func(config StrategyConfig, _ resolveStrategy) (Strategy, error) {
+		return newConsistentHashingStrategy(config.ConsistentHashing.Labels), nil
+	},
+	perNodeStrategyName: buildPerNodeStrategy,
 }
 
 // buildStrategy constructs the named strategy, resolving and injecting any strategies it depends on.
@@ -47,7 +49,15 @@ type allocatorOptions struct {
 // StrategyConfig holds the configuration for the allocation strategies. Each strategy has its own
 // section because strategies accept different configuration options.
 type StrategyConfig struct {
-	PerNode PerNodeStrategyConfig
+	ConsistentHashing ConsistentHashingStrategyConfig
+	PerNode           PerNodeStrategyConfig
+}
+
+// ConsistentHashingStrategyConfig holds the configuration options for the consistent-hashing strategy.
+type ConsistentHashingStrategyConfig struct {
+	// Labels is the set of target label names whose values are used to place a target on the hash ring.
+	// When empty, the target's URL is used.
+	Labels []string
 }
 
 // PerNodeStrategyConfig holds the configuration options for the per-node strategy.

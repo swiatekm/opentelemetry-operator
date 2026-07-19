@@ -981,7 +981,10 @@ config:
     - job_name: prometheus
 allocation_strategy: per-node
 allocation_strategy_config:
-  consistent_hashing: {}
+  consistent_hashing:
+    labels:
+      - namespace
+      - pod
   least_weighted: {}
   per_node:
     fallback_strategy: consistent-hashing
@@ -995,7 +998,8 @@ allocation_strategy_config:
 	assert.Equal(t, "per-node", cfg.AllocationStrategy)
 	assert.Equal(t, "consistent-hashing", cfg.AllocationStrategyConfig.PerNode.FallbackStrategy)
 	assert.Equal(t, AllocationStrategyConfig{
-		PerNode: PerNodeStrategyConfig{FallbackStrategy: "consistent-hashing"},
+		ConsistentHashing: ConsistentHashingStrategyConfig{Labels: []string{"namespace", "pod"}},
+		PerNode:           PerNodeStrategyConfig{FallbackStrategy: "consistent-hashing"},
 	}, cfg.AllocationStrategyConfig)
 }
 
