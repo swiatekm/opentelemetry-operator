@@ -6,8 +6,42 @@ package allocation
 import (
 	"testing"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/open-telemetry/opentelemetry-operator/cmd/otel-allocator/internal/target"
 )
+
+// TestConsistentHashingByLabels builds the strategy through the factory (exercising the full
+// config -> builder -> constructor path) and verifies that when hashing labels are configured, targets
+// sharing those label values are assigned to the same collector regardless of their URL.
+func TestConsistentHashingByLabels(t *testing.T) {
+	allocator, err := New(consistentHashingStrategyName, logger, WithStrategyConfig(StrategyConfig{
+		ConsistentHashing: ConsistentHashingStrategyConfig{Labels: []string{"shard"}},
+	}))
+	require.NoError(t, err)
+
+	allocator.SetCollectors(MakeNCollectors(10, 0))
+
+	// Two targets share the same "shard" value but differ in URL and in an unrelated label.
+	labelsA := labels.New(labels.Label{Name: "shard", Value: "a"}, labels.Label{Name: "pod", Value: "1"})
+	labelsB := labels.New(labels.Label{Name: "shard", Value: "a"}, labels.Label{Name: "pod", Value: "2"})
+	targetA := target.NewItem("job", "10.0.0.1:8080", labelsA, "", target.HashLabels(labelsA, "job"))
+	targetB := target.NewItem("job", "10.0.0.2:9090", labelsB, "", target.HashLabels(labelsB, "job"))
+
+	allocator.SetTargets([]*target.Item{targetA, targetB})
+
+	items := allocator.TargetItems()
+	itemA, ok := items[targetA.Hash()]
+	require.True(t, ok)
+	itemB, ok := items[targetB.Hash()]
+	require.True(t, ok)
+
+	require.NotEmpty(t, itemA.CollectorName)
+	assert.Equal(t, itemA.CollectorName, itemB.CollectorName,
+		"targets sharing the configured hashing label should be assigned to the same collector regardless of URL")
+}
 
 func TestRelativelyEvenDistribution(t *testing.T) {
 	numCols := 15
