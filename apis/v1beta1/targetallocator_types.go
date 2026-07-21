@@ -131,3 +131,30 @@ const (
 	// TargetAllocatorFilterStrategyRelabelConfig targets will be consistently drops targets based on the relabel_config.
 	TargetAllocatorFilterStrategyRelabelConfig TargetAllocatorFilterStrategy = "relabel-config"
 )
+
+// TargetAllocatorAllocationStrategyConfig holds per-strategy configuration for the allocation strategies.
+// Each allocation strategy has its own section because strategies accept different configuration options.
+type TargetAllocatorAllocationStrategyConfig struct {
+	// PerNode holds the configuration options for the per-node allocation strategy.
+	// +optional
+	PerNode TargetAllocatorPerNodeStrategyConfig `json:"perNode,omitempty"`
+}
+
+// TargetAllocatorPerNodeStrategyConfig holds the configuration options for the per-node allocation strategy.
+type TargetAllocatorPerNodeStrategyConfig struct {
+	// FallbackStrategy configures the allocation strategy used for targets the per-node strategy can't assign
+	// on their own, for example targets which don't reside on a Node. If unset, such targets are left
+	// unassigned.
+	// +optional
+	FallbackStrategy *TargetAllocatorFallbackStrategyConfig `json:"fallbackStrategy,omitempty"`
+}
+
+// TargetAllocatorFallbackStrategyConfig configures an allocation strategy used as a fallback: the strategy
+// name plus the options for that strategy. It mirrors TargetAllocatorAllocationStrategyConfig, except that
+// strategies used as fallbacks can't have fallbacks of their own, which keeps fallback chains bounded to a
+// single level.
+type TargetAllocatorFallbackStrategyConfig struct {
+	// Name is the name of the allocation strategy to use as the fallback.
+	// +kubebuilder:validation:Required
+	Name TargetAllocatorAllocationStrategy `json:"name"`
+}
