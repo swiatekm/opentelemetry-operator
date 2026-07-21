@@ -131,3 +131,19 @@ const (
 	// TargetAllocatorFilterStrategyRelabelConfig targets will be consistently drops targets based on the relabel_config.
 	TargetAllocatorFilterStrategyRelabelConfig TargetAllocatorFilterStrategy = "relabel-config"
 )
+
+// TargetAllocatorAllocationStrategyConfig holds per-strategy configuration for the allocation strategies.
+// Each allocation strategy has its own section because strategies accept different configuration options.
+type TargetAllocatorAllocationStrategyConfig struct {
+	// PerNode holds the configuration options for the per-node allocation strategy.
+	// +optional
+	PerNode TargetAllocatorPerNodeStrategyConfig `json:"perNode,omitempty"`
+}
+
+// TargetAllocatorPerNodeStrategyConfig holds the configuration options for the per-node allocation strategy.
+type TargetAllocatorPerNodeStrategyConfig struct {
+	// FallbackStrategy is the allocation strategy used for targets the per-node strategy can't assign on their
+	// own, for example targets which don't reside on a Node. If empty, such targets are left unassigned.
+	// +optional
+	FallbackStrategy TargetAllocatorAllocationStrategy `json:"fallbackStrategy,omitempty"`
+}

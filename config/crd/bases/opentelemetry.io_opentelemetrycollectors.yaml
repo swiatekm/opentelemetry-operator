@@ -8079,6 +8079,18 @@ spec:
                     - consistent-hashing
                     - per-node
                     type: string
+                  allocationStrategyConfig:
+                    properties:
+                      perNode:
+                        properties:
+                          fallbackStrategy:
+                            enum:
+                            - least-weighted
+                            - consistent-hashing
+                            - per-node
+                            type: string
+                        type: object
+                    type: object
                   allowInsecureAuthSecrets:
                     type: boolean
                   collectorNotReadyGracePeriod:

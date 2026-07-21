@@ -57,6 +57,7 @@ func TargetAllocator(params manifests.Params) (*v1alpha1.TargetAllocator, error)
 				PodDisruptionBudget:       taSpec.PodDisruptionBudget,
 			},
 			AllocationStrategy:           taSpec.AllocationStrategy,
+			AllocationStrategyConfig:     taSpec.AllocationStrategyConfig,
 			FilterStrategy:               taSpec.FilterStrategy,
 			PrometheusCR:                 taSpec.PrometheusCR,
 			Observability:                taSpec.Observability,
