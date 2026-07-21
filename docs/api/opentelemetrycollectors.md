@@ -32208,6 +32208,14 @@ WARNING: The per-node strategy currently ignores targets without a Node, like co
         </td>
         <td>false</td>
       </tr><tr>
+        <td><b><a href="#opentelemetrycollectorspectargetallocatorallocationstrategyconfig">allocationStrategyConfig</a></b></td>
+        <td>object</td>
+        <td>
+          AllocationStrategyConfig holds additional per-strategy configuration for the allocation strategies,
+keyed by strategy. For example, it can set the fallback strategy used by the per-node strategy.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
         <td><b>allowInsecureAuthSecrets</b></td>
         <td>boolean</td>
         <td>
@@ -33989,6 +33997,64 @@ Valid operators are In, NotIn, Exists and DoesNotExist.<br/>
 the values array must be non-empty. If the operator is Exists or DoesNotExist,
 the values array must be empty. This array is replaced during a strategic
 merge patch.<br/>
+        </td>
+        <td>false</td>
+      </tr></tbody>
+</table>
+
+
+### OpenTelemetryCollector.spec.targetAllocator.allocationStrategyConfig
+<sup><sup>[↩ Parent](#opentelemetrycollectorspectargetallocator-1)</sup></sup>
+
+
+
+AllocationStrategyConfig holds additional per-strategy configuration for the allocation strategies,
+keyed by strategy. For example, it can set the fallback strategy used by the per-node strategy.
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Required</th>
+        </tr>
+    </thead>
+    <tbody><tr>
+        <td><b><a href="#opentelemetrycollectorspectargetallocatorallocationstrategyconfigpernode">perNode</a></b></td>
+        <td>object</td>
+        <td>
+          PerNode holds the configuration options for the per-node allocation strategy.<br/>
+        </td>
+        <td>false</td>
+      </tr></tbody>
+</table>
+
+
+### OpenTelemetryCollector.spec.targetAllocator.allocationStrategyConfig.perNode
+<sup><sup>[↩ Parent](#opentelemetrycollectorspectargetallocatorallocationstrategyconfig)</sup></sup>
+
+
+
+PerNode holds the configuration options for the per-node allocation strategy.
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Required</th>
+        </tr>
+    </thead>
+    <tbody><tr>
+        <td><b>fallbackStrategy</b></td>
+        <td>enum</td>
+        <td>
+          FallbackStrategy is the allocation strategy used for targets the per-node strategy can't assign on their
+own, for example targets which don't reside on a Node. If empty, such targets are left unassigned.<br/>
+          <br/>
+            <i>Enum</i>: least-weighted, consistent-hashing, per-node<br/>
         </td>
         <td>false</td>
       </tr></tbody>
