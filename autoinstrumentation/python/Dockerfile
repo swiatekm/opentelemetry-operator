@@ -16,6 +16,7 @@ WORKDIR /operator-build
 ADD requirements.txt .
 
 RUN mkdir workspace && pip install --target workspace -r requirements.txt
+RUN chmod -R go+r workspace
 
 FROM python:3.14-alpine@sha256:26730869004e2b9c4b9ad09cab8625e81d256d1ce97e72df5520e806b1709f92 AS build-musl
 
@@ -25,11 +26,9 @@ ADD requirements.txt .
 
 RUN apk add gcc python3-dev musl-dev linux-headers
 RUN mkdir workspace && pip install --target workspace -r requirements.txt
+RUN chmod -R go+r workspace
 
-FROM busybox@sha256:fd8d9aa63ba2f0982b5304e1ee8d3b90a210bc1ffb5314d980eb6962f1a9715d
+FROM ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-cp:9.11
 
 COPY --from=build /operator-build/workspace /autoinstrumentation
 COPY --from=build-musl /operator-build/workspace /autoinstrumentation-musl
-
-RUN chmod -R go+r /autoinstrumentation
-RUN chmod -R go+r /autoinstrumentation-musl

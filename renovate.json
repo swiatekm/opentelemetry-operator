@@ -66,6 +66,19 @@
     },
     {
       "customType": "regex",
+      "description": "Update GNU coreutils version used for the auto-instrumentation cp base image",
+      "datasourceTemplate": "github-tags",
+      "depNameTemplate": "coreutils/coreutils",
+      "extractVersionTemplate": "^v?(?<version>.*)$",
+      "fileMatch": [
+        "(^|/)autoinstrumentation/cp/version\\.txt$"
+      ],
+      "matchStrings": [
+        "^(?<currentValue>[0-9]+\\.[0-9]+)\\s*$"
+      ]
+    },
+    {
+      "customType": "regex",
       "description": "Update kind node images in kind config files",
       "datasourceTemplate": "docker",
       "depNameTemplate": "kindest/node",
@@ -116,6 +129,11 @@
       "matchManagers": ["regex"],
       "matchFileNames": ["autoinstrumentation/dotnet/version.txt"],
       "commitMessageTopic": "OpenTelemetry dotnet agent version"
+    },
+    {
+      "matchManagers": ["regex"],
+      "matchFileNames": ["autoinstrumentation/cp/version.txt"],
+      "commitMessageTopic": "GNU coreutils version for the auto-instrumentation cp base image"
     },
     {
       "matchManagers": ["npm"],

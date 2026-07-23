@@ -24,6 +24,7 @@ INSTRUMENTATION_NODEJS_VERSION ?= "$(shell grep -o '"@opentelemetry/auto-instrum
 INSTRUMENTATION_PYTHON_VERSION ?= "$(shell grep -o '^opentelemetry-instrumentation==[^ ]*' autoinstrumentation/python/requirements.txt | cut -d'=' -f3)"
 INSTRUMENTATION_DOTNET_VERSION ?= "$(shell cat autoinstrumentation/dotnet/version.txt)"
 INSTRUMENTATION_APACHE_HTTPD_VERSION ?= "$(shell cat autoinstrumentation/apache-httpd/version.txt)"
+INSTRUMENTATION_CP_VERSION ?= "$(shell cat autoinstrumentation/cp/version.txt)"
 
 COMMON_LDFLAGS ?= -s -w
 OPERATOR_LDFLAGS ?= -X ${VERSION_PKG}.version=${VERSION}\
@@ -77,6 +78,13 @@ INSTRUMENTATION_DOTNET_IMG ?= ${IMG_PREFIX}/${INSTRUMENTATION_DOTNET_IMG_REPO}:$
 
 INSTRUMENTATION_APACHE_HTTPD_IMG_REPO ?= autoinstrumentation-apache-httpd
 INSTRUMENTATION_APACHE_HTTPD_IMG ?= ${IMG_PREFIX}/${INSTRUMENTATION_APACHE_HTTPD_IMG_REPO}:${INSTRUMENTATION_APACHE_HTTPD_VERSION}
+
+INSTRUMENTATION_CP_IMG_REPO ?= autoinstrumentation-cp
+INSTRUMENTATION_CP_IMG ?= ${IMG_PREFIX}/${INSTRUMENTATION_CP_IMG_REPO}:${INSTRUMENTATION_CP_VERSION}
+# The name the auto-instrumentation Dockerfiles reference in FROM. Locally
+# built cp images are also tagged with it, so that building the other
+# auto-instrumentation images picks up the local build instead of pulling.
+INSTRUMENTATION_CP_PUBLISHED_IMG ?= ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-cp:${INSTRUMENTATION_CP_VERSION}
 
 MUSTGATHER_IMG ?= ${IMG_PREFIX}/must-gather
 
@@ -690,9 +698,15 @@ container-instrumentation-apache-httpd:
 	docker build --load -t ${INSTRUMENTATION_APACHE_HTTPD_IMG} autoinstrumentation/apache-httpd \
 		--build-arg version=${INSTRUMENTATION_APACHE_HTTPD_VERSION}
 
+# Build the cp base image the other auto-instrumentation images are built from
+.PHONY: container-instrumentation-cp
+container-instrumentation-cp:
+	docker build --load -t ${INSTRUMENTATION_CP_IMG} -t ${INSTRUMENTATION_CP_PUBLISHED_IMG} autoinstrumentation/cp \
+		--build-arg version=${INSTRUMENTATION_CP_VERSION}
+
 # Build all auto-instrumentation container images
 .PHONY: container-instrumentation-all
-container-instrumentation-all: container-instrumentation-java container-instrumentation-nodejs container-instrumentation-python container-instrumentation-dotnet container-instrumentation-apache-httpd
+container-instrumentation-all: container-instrumentation-cp container-instrumentation-java container-instrumentation-nodejs container-instrumentation-python container-instrumentation-dotnet container-instrumentation-apache-httpd
 
 ##@ Kind Cluster
 # Start kind cluster for local development

@@ -16,12 +16,14 @@ COPY . .
 
 RUN npm install
 
-FROM busybox@sha256:fd8d9aa63ba2f0982b5304e1ee8d3b90a210bc1ffb5314d980eb6962f1a9715d
-
-COPY --from=build /operator-build/build/workspace /autoinstrumentation
-
-RUN chmod -R go+r /autoinstrumentation
+WORKDIR /operator-build/build/workspace
 
 # Backward compatibility with old operator version
-RUN cp -r /autoinstrumentation/node_modules/@opentelemetry/auto-instrumentations-node/build/src/. /autoinstrumentation
-RUN ln /autoinstrumentation/register.js /autoinstrumentation/autoinstrumentation.js
+RUN cp -r node_modules/@opentelemetry/auto-instrumentations-node/build/src/. .
+RUN ln register.js autoinstrumentation.js
+
+RUN chmod -R go+r .
+
+FROM ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-cp:9.11
+
+COPY --from=build /operator-build/build/workspace /autoinstrumentation
