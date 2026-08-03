@@ -210,8 +210,8 @@ func (b *TAConfigBuilder) build() string {
 // TA deployment helpers
 // ---------------------------------------------------------------------------
 
-// deployTA applies all resources from config/target-allocator/ into ns,
-// then overwrites the ConfigMap with test-specific content.
+// deployTA applies all resources from config/target-allocator/ into ns with
+// test-specific ConfigMap content.
 // The kustomize overlay is a sibling of the base directory; --load-restrictor=LoadRestrictionsNone
 // is required because kustomize v5 otherwise blocks references outside the overlay root.
 func deployTA(t *testing.T, ctx context.Context, ns, taConfig string) {
@@ -230,6 +230,8 @@ func deployTA(t *testing.T, ctx context.Context, ns, taConfig string) {
 	require.NoError(t, err)
 
 	imgName, imgTag := splitImageNameTag(taImg)
+	err = os.WriteFile(filepath.Join(overlayDir, "targetallocator.yaml"), []byte(taConfig), 0o600)
+	require.NoError(t, err)
 
 	overlayContent := fmt.Sprintf(`apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -242,6 +244,12 @@ images:
   - name: target-allocator
     newName: %[2]s
     newTag: "%[3]s"
+
+configMapGenerator:
+  - name: target-allocator
+    behavior: merge
+    files:
+      - targetallocator.yaml
 
 patches:
   # Make cluster-scoped resources unique per test namespace to avoid collisions.
@@ -281,14 +289,6 @@ patches:
 	applyOut, err := cmd.CombinedOutput()
 	require.NoError(t, err, "kubectl apply failed: %s", string(applyOut))
 	t.Logf("applied TA manifests:\n%s", string(applyOut))
-
-	// The base kustomization includes a ConfigMap with default content.
-	// Overwrite it immediately with test-specific config before the pod starts.
-	cm, err := clientset.CoreV1().ConfigMaps(ns).Get(ctx, "target-allocator", metav1.GetOptions{})
-	require.NoError(t, err, "get TA ConfigMap")
-	cm.Data = map[string]string{"targetallocator.yaml": taConfig}
-	_, err = clientset.CoreV1().ConfigMaps(ns).Update(ctx, cm, metav1.UpdateOptions{})
-	require.NoError(t, err, "update TA ConfigMap with test config")
 }
 
 func deployCollectors(t *testing.T, ctx context.Context, ns string, replicas int32) {
