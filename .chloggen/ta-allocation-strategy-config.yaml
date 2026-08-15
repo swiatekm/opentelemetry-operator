@@ -5,7 +5,7 @@ change_type: enhancement
 component: target allocator
 
 # A brief description of the change. Surround your text with quotes ("") if it needs to start with a backtick (`).
-note: Add an `allocation_strategy_config` section to the target allocator configuration, allowing the per-node fallback strategy to be set via `allocation_strategy_config.per_node.fallback_strategy`.
+note: Add an `allocation_strategy_config` section to the target allocator configuration, allowing the per-node fallback strategy to be set via `allocation_strategy_config.per_node.fallback_strategy.name`.
 
 # One or more tracking issues related to the change
 issues: [5183]

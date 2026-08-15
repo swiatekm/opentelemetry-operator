@@ -984,7 +984,9 @@ allocation_strategy_config:
   consistent_hashing: {}
   least_weighted: {}
   per_node:
-    fallback_strategy: consistent-hashing
+    fallback_strategy:
+      name: consistent-hashing
+      consistent_hashing: {}
 `
 	configPath := filepath.Join(tempDir, "config.yaml")
 	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0o600))
@@ -993,9 +995,10 @@ allocation_strategy_config:
 	require.NoError(t, LoadFromFile(configPath, &cfg))
 
 	assert.Equal(t, "per-node", cfg.AllocationStrategy)
-	assert.Equal(t, "consistent-hashing", cfg.AllocationStrategyConfig.PerNode.FallbackStrategy)
 	assert.Equal(t, AllocationStrategyConfig{
-		PerNode: PerNodeStrategyConfig{FallbackStrategy: "consistent-hashing"},
+		PerNode: PerNodeStrategyConfig{
+			FallbackStrategy: &FallbackStrategyConfig{Name: "consistent-hashing"},
+		},
 	}, cfg.AllocationStrategyConfig)
 }
 
@@ -1003,36 +1006,36 @@ func TestGetTargetAllocatorFallbackStrategy(t *testing.T) {
 	testCases := []struct {
 		name     string
 		config   Config
-		expected string
+		expected *FallbackStrategyConfig
 	}{
 		{
 			name:     "neither set",
 			config:   Config{},
-			expected: "",
+			expected: nil,
 		},
 		{
 			name:     "only deprecated top-level option set",
 			config:   Config{AllocationFallbackStrategy: "consistent-hashing"},
-			expected: "consistent-hashing",
+			expected: &FallbackStrategyConfig{Name: "consistent-hashing"},
 		},
 		{
 			name: "only strategy-specific option set",
 			config: Config{
 				AllocationStrategyConfig: AllocationStrategyConfig{
-					PerNode: PerNodeStrategyConfig{FallbackStrategy: "least-weighted"},
+					PerNode: PerNodeStrategyConfig{FallbackStrategy: &FallbackStrategyConfig{Name: "least-weighted"}},
 				},
 			},
-			expected: "least-weighted",
+			expected: &FallbackStrategyConfig{Name: "least-weighted"},
 		},
 		{
 			name: "strategy-specific option takes precedence over deprecated option",
 			config: Config{
 				AllocationFallbackStrategy: "consistent-hashing",
 				AllocationStrategyConfig: AllocationStrategyConfig{
-					PerNode: PerNodeStrategyConfig{FallbackStrategy: "least-weighted"},
+					PerNode: PerNodeStrategyConfig{FallbackStrategy: &FallbackStrategyConfig{Name: "least-weighted"}},
 				},
 			},
-			expected: "least-weighted",
+			expected: &FallbackStrategyConfig{Name: "least-weighted"},
 		},
 	}
 

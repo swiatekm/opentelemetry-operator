@@ -90,9 +90,15 @@ func main() {
 	}()
 
 	strategyConfig := allocation.StrategyConfig{
-		PerNode: allocation.PerNodeStrategyConfig{
-			FallbackStrategy: cfg.GetTargetAllocatorFallbackStrategy(),
-		},
+		ConsistentHashing: allocation.ConsistentHashingStrategyConfig(cfg.AllocationStrategyConfig.ConsistentHashing),
+		LeastWeighted:     allocation.LeastWeightedStrategyConfig(cfg.AllocationStrategyConfig.LeastWeighted),
+	}
+	if fallback := cfg.GetTargetAllocatorFallbackStrategy(); fallback != nil {
+		strategyConfig.PerNode.FallbackStrategy = &allocation.FallbackStrategyConfig{
+			Name:              fallback.Name,
+			ConsistentHashing: allocation.ConsistentHashingStrategyConfig(fallback.ConsistentHashing),
+			LeastWeighted:     allocation.LeastWeightedStrategyConfig(fallback.LeastWeighted),
+		}
 	}
 	allocator, allocErr := allocation.New(cfg.AllocationStrategy, log, allocation.WithStrategyConfig(strategyConfig))
 	if allocErr != nil {

@@ -16,7 +16,7 @@ import (
 func TestNewWithStrategyConfig(t *testing.T) {
 	t.Run("per-node resolves a registered fallback strategy", func(t *testing.T) {
 		a, err := New(perNodeStrategyName, logger, WithStrategyConfig(StrategyConfig{
-			PerNode: PerNodeStrategyConfig{FallbackStrategy: consistentHashingStrategyName},
+			PerNode: PerNodeStrategyConfig{FallbackStrategy: &FallbackStrategyConfig{Name: consistentHashingStrategyName}},
 		}))
 		require.NoError(t, err)
 		assert.NotNil(t, a)
@@ -24,14 +24,14 @@ func TestNewWithStrategyConfig(t *testing.T) {
 
 	t.Run("per-node rejects an unregistered fallback strategy", func(t *testing.T) {
 		_, err := New(perNodeStrategyName, logger, WithStrategyConfig(StrategyConfig{
-			PerNode: PerNodeStrategyConfig{FallbackStrategy: "does-not-exist"},
+			PerNode: PerNodeStrategyConfig{FallbackStrategy: &FallbackStrategyConfig{Name: "does-not-exist"}},
 		}))
 		require.Error(t, err)
 	})
 
 	t.Run("per-node rejects itself as a fallback strategy", func(t *testing.T) {
 		_, err := New(perNodeStrategyName, logger, WithStrategyConfig(StrategyConfig{
-			PerNode: PerNodeStrategyConfig{FallbackStrategy: perNodeStrategyName},
+			PerNode: PerNodeStrategyConfig{FallbackStrategy: &FallbackStrategyConfig{Name: perNodeStrategyName}},
 		}))
 		require.Error(t, err)
 	})
@@ -39,7 +39,7 @@ func TestNewWithStrategyConfig(t *testing.T) {
 	t.Run("strategies without their own options ignore the config", func(t *testing.T) {
 		for _, name := range []string{consistentHashingStrategyName, leastWeightedStrategyName} {
 			a, err := New(name, logger, WithStrategyConfig(StrategyConfig{
-				PerNode: PerNodeStrategyConfig{FallbackStrategy: "does-not-exist"},
+				PerNode: PerNodeStrategyConfig{FallbackStrategy: &FallbackStrategyConfig{Name: "does-not-exist"}},
 			}))
 			require.NoError(t, err, "strategy %s should ignore the per-node config", name)
 			assert.NotNil(t, a)

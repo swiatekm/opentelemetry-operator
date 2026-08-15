@@ -97,20 +97,33 @@ type LeastWeightedStrategyConfig struct{}
 
 // PerNodeStrategyConfig holds the configuration options for the per-node allocation strategy.
 type PerNodeStrategyConfig struct {
-	// FallbackStrategy is the allocation strategy used for targets the per-node strategy can't assign on its
-	// own, for example targets which don't have a node label. If empty, such targets are left unassigned.
-	// The fallback strategy is built with default options and can't have a fallback of its own.
-	FallbackStrategy string `yaml:"fallback_strategy,omitempty"`
+	// FallbackStrategy configures the allocation strategy used for targets the per-node strategy can't
+	// assign on its own, for example targets which don't have a node label. If unset, such targets are
+	// left unassigned.
+	FallbackStrategy *FallbackStrategyConfig `yaml:"fallback_strategy,omitempty"`
 }
 
-// GetTargetAllocatorFallbackStrategy returns the effective fallback allocation strategy.
-// The strategy-specific allocation_strategy_config.per_node.fallback_strategy takes precedence over the
-// deprecated top-level allocation_fallback_strategy option.
-func (c *Config) GetTargetAllocatorFallbackStrategy() string {
-	if c.AllocationStrategyConfig.PerNode.FallbackStrategy != "" {
+// FallbackStrategyConfig configures an allocation strategy used as a fallback: the strategy name plus
+// the options for that strategy. It mirrors AllocationStrategyConfig, except that strategies used as
+// fallbacks can't have fallbacks of their own, which keeps fallback chains bounded to a single level.
+type FallbackStrategyConfig struct {
+	// Name is the name of the allocation strategy to use as the fallback.
+	Name              string                          `yaml:"name"`
+	ConsistentHashing ConsistentHashingStrategyConfig `yaml:"consistent_hashing,omitempty"`
+	LeastWeighted     LeastWeightedStrategyConfig     `yaml:"least_weighted,omitempty"`
+}
+
+// GetTargetAllocatorFallbackStrategy returns the effective fallback allocation strategy configuration,
+// or nil if no fallback is configured. The strategy-specific allocation_strategy_config.per_node.fallback_strategy
+// takes precedence over the deprecated top-level allocation_fallback_strategy option.
+func (c *Config) GetTargetAllocatorFallbackStrategy() *FallbackStrategyConfig {
+	if c.AllocationStrategyConfig.PerNode.FallbackStrategy != nil {
 		return c.AllocationStrategyConfig.PerNode.FallbackStrategy
 	}
-	return c.AllocationFallbackStrategy
+	if c.AllocationFallbackStrategy != "" {
+		return &FallbackStrategyConfig{Name: c.AllocationFallbackStrategy}
+	}
+	return nil
 }
 
 type PrometheusCRConfig struct {

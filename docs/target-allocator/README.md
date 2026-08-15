@@ -85,11 +85,13 @@ strategy, set a fallback strategy:
 allocation_strategy: per-node
 allocation_strategy_config:
   per_node:
-    fallback_strategy: consistent-hashing
+    fallback_strategy:
+      name: consistent-hashing
 ```
 
-A fallback strategy is always constructed with default options and can't have a fallback of its own, so fallback
-chains are bounded to a single level.
+The `fallback_strategy` section takes the fallback strategy's `name` alongside the options for that strategy, keyed
+by strategy name just like `allocation_strategy_config` itself. A strategy used as a fallback can't have a fallback
+of its own, so fallback chains are bounded to a single level.
 
 [consistent_hashing]: https://blog.research.google/2017/04/consistent-hashing-with-bounded-loads.html
 ## Discovery of Prometheus Custom Resources

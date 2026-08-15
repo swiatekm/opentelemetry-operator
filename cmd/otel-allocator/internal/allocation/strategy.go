@@ -37,11 +37,14 @@ func buildStrategy(name string, config StrategyConfig) (Strategy, error) {
 	return build(config)
 }
 
-// buildFallbackStrategy constructs the named strategy for use as a fallback. Fallback strategies are
-// built without any strategy configuration of their own, so a fallback strategy can never have a
-// fallback itself. This keeps fallback chains bounded to a single level.
-func buildFallbackStrategy(name string) (Strategy, error) {
-	return buildStrategy(name, StrategyConfig{})
+// buildFallbackStrategy constructs the strategy configured as a fallback. FallbackStrategyConfig has no
+// sections carrying fallbacks of their own, so a fallback strategy can never have a fallback itself,
+// keeping fallback chains bounded to a single level by construction.
+func buildFallbackStrategy(config FallbackStrategyConfig) (Strategy, error) {
+	return buildStrategy(config.Name, StrategyConfig{
+		ConsistentHashing: config.ConsistentHashing,
+		LeastWeighted:     config.LeastWeighted,
+	})
 }
 
 // Option configures the allocator constructed by New.
@@ -54,15 +57,31 @@ type allocatorOptions struct {
 // StrategyConfig holds the configuration for the allocation strategies. Each strategy has its own
 // section because strategies accept different configuration options.
 type StrategyConfig struct {
-	PerNode PerNodeStrategyConfig
+	ConsistentHashing ConsistentHashingStrategyConfig
+	LeastWeighted     LeastWeightedStrategyConfig
+	PerNode           PerNodeStrategyConfig
 }
+
+// ConsistentHashingStrategyConfig holds the configuration options for the consistent-hashing strategy.
+type ConsistentHashingStrategyConfig struct{}
+
+// LeastWeightedStrategyConfig holds the configuration options for the least-weighted strategy.
+type LeastWeightedStrategyConfig struct{}
 
 // PerNodeStrategyConfig holds the configuration options for the per-node strategy.
 type PerNodeStrategyConfig struct {
-	// FallbackStrategy is the name of the strategy used for targets the per-node strategy can't assign on
-	// its own, for example targets which don't have a node label. If empty, such targets are left unassigned.
-	// The fallback strategy is built with default options and can't have a fallback of its own.
-	FallbackStrategy string
+	// FallbackStrategy configures the strategy used for targets the per-node strategy can't assign on
+	// its own, for example targets which don't have a node label. If nil, such targets are left unassigned.
+	FallbackStrategy *FallbackStrategyConfig
+}
+
+// FallbackStrategyConfig holds the name and options of a strategy used as a fallback. It mirrors
+// StrategyConfig, except that strategies used as fallbacks can't have fallbacks of their own, which
+// keeps fallback chains bounded to a single level.
+type FallbackStrategyConfig struct {
+	Name              string
+	ConsistentHashing ConsistentHashingStrategyConfig
+	LeastWeighted     LeastWeightedStrategyConfig
 }
 
 // WithStrategyConfig sets the configuration used to construct the allocator's strategy.
