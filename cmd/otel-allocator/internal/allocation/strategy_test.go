@@ -29,6 +29,13 @@ func TestNewWithStrategyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("per-node rejects itself as a fallback strategy", func(t *testing.T) {
+		_, err := New(perNodeStrategyName, logger, WithStrategyConfig(StrategyConfig{
+			PerNode: PerNodeStrategyConfig{FallbackStrategy: perNodeStrategyName},
+		}))
+		require.Error(t, err)
+	})
+
 	t.Run("strategies without their own options ignore the config", func(t *testing.T) {
 		for _, name := range []string{consistentHashingStrategyName, leastWeightedStrategyName} {
 			a, err := New(name, logger, WithStrategyConfig(StrategyConfig{

@@ -88,6 +88,9 @@ allocation_strategy_config:
     fallback_strategy: consistent-hashing
 ```
 
+A fallback strategy is always constructed with default options and can't have a fallback of its own, so fallback
+chains are bounded to a single level.
+
 [consistent_hashing]: https://blog.research.google/2017/04/consistent-hashing-with-bounded-loads.html
 ## Discovery of Prometheus Custom Resources
 

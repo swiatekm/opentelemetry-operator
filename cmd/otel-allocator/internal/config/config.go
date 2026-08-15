@@ -99,6 +99,7 @@ type LeastWeightedStrategyConfig struct{}
 type PerNodeStrategyConfig struct {
 	// FallbackStrategy is the allocation strategy used for targets the per-node strategy can't assign on its
 	// own, for example targets which don't have a node label. If empty, such targets are left unassigned.
+	// The fallback strategy is built with default options and can't have a fallback of its own.
 	FallbackStrategy string `yaml:"fallback_strategy,omitempty"`
 }
 

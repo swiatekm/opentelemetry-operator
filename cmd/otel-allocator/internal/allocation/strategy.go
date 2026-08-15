@@ -12,29 +12,36 @@ import (
 	"github.com/open-telemetry/opentelemetry-operator/cmd/otel-allocator/internal/target"
 )
 
-// resolveStrategy builds a strategy by name. It is passed to strategy builders so they can construct the
-// strategies they depend on without referring to package-level state, which would otherwise create an
-// initialization cycle with strategyBuilders.
-type resolveStrategy func(name string, config StrategyConfig) (Strategy, error)
-
 // strategyBuilder constructs a Strategy from the allocation strategy configuration. A builder reads only
-// the configuration relevant to its strategy and uses resolve to construct any strategies its strategy
-// depends on (e.g. a fallback strategy), which are then injected into the strategy's constructor.
-type strategyBuilder func(config StrategyConfig, resolve resolveStrategy) (Strategy, error)
+// the configuration relevant to its strategy and constructs any strategies its strategy depends on
+// (e.g. a fallback strategy), which are then injected into the strategy's constructor.
+type strategyBuilder func(config StrategyConfig) (Strategy, error)
 
-var strategyBuilders = map[string]strategyBuilder{
-	leastWeightedStrategyName:     func(StrategyConfig, resolveStrategy) (Strategy, error) { return newleastWeightedStrategy(), nil },
-	consistentHashingStrategyName: func(StrategyConfig, resolveStrategy) (Strategy, error) { return newConsistentHashingStrategy(), nil },
-	perNodeStrategyName:           buildPerNodeStrategy,
+// strategyBuilders returns the registry of strategy builders keyed by strategy name. It is a function
+// rather than a package-level variable so builders can call buildStrategy for the strategies they depend
+// on without creating an initialization cycle.
+func strategyBuilders() map[string]strategyBuilder {
+	return map[string]strategyBuilder{
+		leastWeightedStrategyName:     func(StrategyConfig) (Strategy, error) { return newleastWeightedStrategy(), nil },
+		consistentHashingStrategyName: func(StrategyConfig) (Strategy, error) { return newConsistentHashingStrategy(), nil },
+		perNodeStrategyName:           buildPerNodeStrategy,
+	}
 }
 
 // buildStrategy constructs the named strategy, resolving and injecting any strategies it depends on.
 func buildStrategy(name string, config StrategyConfig) (Strategy, error) {
-	build, ok := strategyBuilders[name]
+	build, ok := strategyBuilders()[name]
 	if !ok {
 		return nil, fmt.Errorf("unregistered strategy: %s", name)
 	}
-	return build(config, buildStrategy)
+	return build(config)
+}
+
+// buildFallbackStrategy constructs the named strategy for use as a fallback. Fallback strategies are
+// built without any strategy configuration of their own, so a fallback strategy can never have a
+// fallback itself. This keeps fallback chains bounded to a single level.
+func buildFallbackStrategy(name string) (Strategy, error) {
+	return buildStrategy(name, StrategyConfig{})
 }
 
 // Option configures the allocator constructed by New.
@@ -54,6 +61,7 @@ type StrategyConfig struct {
 type PerNodeStrategyConfig struct {
 	// FallbackStrategy is the name of the strategy used for targets the per-node strategy can't assign on
 	// its own, for example targets which don't have a node label. If empty, such targets are left unassigned.
+	// The fallback strategy is built with default options and can't have a fallback of its own.
 	FallbackStrategy string
 }
 
@@ -78,7 +86,7 @@ func New(name string, log logr.Logger, opts ...Option) (Allocator, error) {
 
 func GetRegisteredAllocatorNames() []string {
 	var names []string
-	for s := range strategyBuilders {
+	for s := range strategyBuilders() {
 		names = append(names, s)
 	}
 	return names

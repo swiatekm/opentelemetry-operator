@@ -27,15 +27,19 @@ func newPerNodeStrategy(fallbackStrategy Strategy) Strategy {
 	}
 }
 
-// buildPerNodeStrategy resolves the configured fallback strategy and injects it into the per-node strategy.
-func buildPerNodeStrategy(config StrategyConfig, resolve resolveStrategy) (Strategy, error) {
+// buildPerNodeStrategy builds the configured fallback strategy and injects it into the per-node strategy.
+func buildPerNodeStrategy(config StrategyConfig) (Strategy, error) {
 	var fallbackStrategy Strategy
 	if name := config.PerNode.FallbackStrategy; name != "" {
-		resolved, err := resolve(name, config)
+		// A per-node fallback would fail on exactly the targets the primary strategy failed on.
+		if name == perNodeStrategyName {
+			return nil, fmt.Errorf("the per-node strategy can't be used as its own fallback")
+		}
+		fallback, err := buildFallbackStrategy(name)
 		if err != nil {
 			return nil, fmt.Errorf("building per-node fallback strategy: %w", err)
 		}
-		fallbackStrategy = resolved
+		fallbackStrategy = fallback
 	}
 	return newPerNodeStrategy(fallbackStrategy), nil
 }
