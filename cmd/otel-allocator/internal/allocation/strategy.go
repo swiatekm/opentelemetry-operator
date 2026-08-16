@@ -22,9 +22,11 @@ type strategyBuilder func(config StrategyConfig) (Strategy, error)
 // on without creating an initialization cycle.
 func strategyBuilders() map[string]strategyBuilder {
 	return map[string]strategyBuilder{
-		leastWeightedStrategyName:     func(StrategyConfig) (Strategy, error) { return newleastWeightedStrategy(), nil },
-		consistentHashingStrategyName: func(StrategyConfig) (Strategy, error) { return newConsistentHashingStrategy(), nil },
-		perNodeStrategyName:           buildPerNodeStrategy,
+		leastWeightedStrategyName: func(StrategyConfig) (Strategy, error) { return newleastWeightedStrategy(), nil },
+		consistentHashingStrategyName: func(config StrategyConfig) (Strategy, error) {
+			return newConsistentHashingStrategy(config.ConsistentHashing.Labels), nil
+		},
+		perNodeStrategyName: buildPerNodeStrategy,
 	}
 }
 
@@ -63,7 +65,11 @@ type StrategyConfig struct {
 }
 
 // ConsistentHashingStrategyConfig holds the configuration options for the consistent-hashing strategy.
-type ConsistentHashingStrategyConfig struct{}
+type ConsistentHashingStrategyConfig struct {
+	// Labels is the set of target label names whose values are used to place a target on the hash ring.
+	// When empty, the target's URL is used.
+	Labels []string
+}
 
 // LeastWeightedStrategyConfig holds the configuration options for the least-weighted strategy.
 type LeastWeightedStrategyConfig struct{}
