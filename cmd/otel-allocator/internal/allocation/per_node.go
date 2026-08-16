@@ -4,6 +4,7 @@
 package allocation
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/open-telemetry/opentelemetry-operator/cmd/otel-allocator/internal/target"
@@ -33,7 +34,7 @@ func buildPerNodeStrategy(config StrategyConfig) (Strategy, error) {
 	if fallbackConfig := config.PerNode.FallbackStrategy; fallbackConfig != nil {
 		// A per-node fallback would fail on exactly the targets the primary strategy failed on.
 		if fallbackConfig.Name == perNodeStrategyName {
-			return nil, fmt.Errorf("the per-node strategy can't be used as its own fallback")
+			return nil, errors.New("the per-node strategy can't be used as its own fallback")
 		}
 		fallback, err := buildFallbackStrategy(*fallbackConfig)
 		if err != nil {
