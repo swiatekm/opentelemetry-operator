@@ -1,18 +1,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: my-java-other-ns
+  name: my-apache
 spec:
   selector:
     matchLabels:
-      app: my-java-other-ns
+      app: my-apache
   replicas: 1
   template:
     metadata:
       labels:
-        app: my-java-other-ns
+        app: my-apache
       annotations:
-        instrumentation.opentelemetry.io/inject-java: "my-other-ns/java"
+        instrumentation.opentelemetry.io/inject-apache-httpd: "true"
     spec:
       securityContext:
         runAsUser: 1000
@@ -20,13 +20,18 @@ spec:
         fsGroup: 3000
       containers:
       - name: myapp
-        ports:
-        - containerPort: 8080
-        image: ghcr.io/open-telemetry/opentelemetry-operator/e2e-test-app-java:main
+        image: ghcr.io/open-telemetry/opentelemetry-operator/e2e-test-app-apache-httpd:main
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
             drop: ["ALL"]
+        # following to test lifecycle removal in cloned init container
+        lifecycle:
+          postStart:
+            exec:
+              command: [ "/bin/sh", "-c", "echo Hello from the postStart handler" ]
+        ports:
+        - containerPort: 8080
         readinessProbe:
           httpGet:
             path: /
@@ -36,3 +41,10 @@ spec:
           periodSeconds: 15
           timeoutSeconds: 2
           failureThreshold: 3
+        resources:
+          limits:
+            cpu: "1"
+            memory: 500Mi
+          requests:
+            cpu: 250m
+            memory: 100Mi

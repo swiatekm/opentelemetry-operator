@@ -4,6 +4,10 @@ metadata:
   name: nodejs
 spec:
   env:
+    # Export metrics every 10s so the test does not wait out the default 60s
+    # export interval.
+    - name: OTEL_METRIC_EXPORT_INTERVAL
+      value: "10000"
     - name: OTEL_TRACES_EXPORTER
       value: otlp
     - name: OTEL_EXPORTER_OTLP_ENDPOINT
