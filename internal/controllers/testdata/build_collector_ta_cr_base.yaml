@@ -110,7 +110,7 @@ data:
             config: {}
             target_allocator:
                 collector_id: ${POD_NAME}
-                endpoint: http://test-targetallocator:80
+                endpoint: http://test-targetallocator.test.svc:80
                 interval: 30s
     service:
         pipelines:
@@ -178,6 +178,8 @@ metadata:
   namespace: test
 spec:
   allocationStrategy: consistent-hashing
+  allocationStrategyConfig:
+    perNode: {}
   filterStrategy: relabel-config
   global: null
   networkPolicy: {}
