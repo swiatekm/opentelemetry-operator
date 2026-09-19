@@ -1,18 +1,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: my-python
+  name: my-java
 spec:
   selector:
     matchLabels:
-      app: my-python
+      app: my-java
   replicas: 1
   template:
     metadata:
       labels:
-        app: my-python
+        app: my-java
       annotations:
-        instrumentation.opentelemetry.io/inject-python: "true"
+        instrumentation.opentelemetry.io/inject-java: "{{ .Inject }}"
     spec:
       securityContext:
         runAsUser: 1000
@@ -22,7 +22,7 @@ spec:
       - name: myapp
         ports:
         - containerPort: 8080
-        image: ($APP_IMAGE)
+        image: ghcr.io/open-telemetry/opentelemetry-operator/e2e-test-app-java:main
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

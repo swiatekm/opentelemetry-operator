@@ -4,6 +4,10 @@ metadata:
   name: java
 spec:
   env:
+    # Export metrics every 10s so the test does not wait out the default 60s
+    # export interval.
+    - name: OTEL_METRIC_EXPORT_INTERVAL
+      value: "10000"
     - name: OTEL_TRACES_SAMPLER
       value: always_on
     # This is the default protocol in 2.x, whereas in 1.x it's grpc. Set this here so the test can pass on both.
@@ -18,7 +22,6 @@ spec:
     - jaeger
     - b3
   java:
-    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:2.31.1-1
     env:
     - name: OTEL_JAVAAGENT_DEBUG
       value: "true"
