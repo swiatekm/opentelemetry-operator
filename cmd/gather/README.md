@@ -32,5 +32,5 @@ oc adm must-gather --image=ghcr.io/open-telemetry/opentelemetry-operator/must-ga
 You only need to build and run:
 ```sh
 make must-gather
-./bin/must-gather_$(go env GOARCH) --help
+./bin/build/$(go env GOOS)/$(go env GOARCH)/must-gather --help
 ```

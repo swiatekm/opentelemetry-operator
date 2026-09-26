@@ -8,8 +8,8 @@ RUN INSTALL_PKGS=" \
   microdnf clean all
 WORKDIR /
 
-ARG TARGETARCH
-COPY bin/must-gather_${TARGETARCH} /usr/bin/gather
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/must-gather /usr/bin/gather
 
 USER 65532:65532
 

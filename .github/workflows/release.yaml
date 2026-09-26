@@ -30,15 +30,19 @@ jobs:
   release:
     permissions:
       contents: write # required for creating GitHub releases
+      packages: write # required for pushing images to ghcr.io
+      id-token: write # required for keyless signing
     runs-on: ubuntu-latest
     needs: get-versions
     if: needs.get-versions.outputs.desired_version != needs.get-versions.outputs.current_version
     env:
       CURRENT_VERSION: ${{ needs.get-versions.outputs.current_version }}
       DESIRED_VERSION: ${{ needs.get-versions.outputs.desired_version }}
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
+        fetch-depth: 0
         persist-credentials: false
 
     - name: Set up Go
@@ -47,13 +51,38 @@ jobs:
         go-version: "~1.26.8"
         cache: false
 
-    - name: "generate release resources"
-      run: make release-artifacts IMG_PREFIX="ghcr.io/open-telemetry/opentelemetry-operator" VERSION=${DESIRED_VERSION}
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
-    - name: "create the release in GitHub"
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+    - name: Log into Docker.io
+      uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      if: ${{ env.DOCKER_USERNAME != '' }}
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Login to GitHub Package Registry
+      uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Install release tools
+      run: make goreleaser cosign
+
+    - name: "publish images and create the draft release"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: ./.ci/create-release-github.sh
+      run: |
+        # Only a local tag: GitHub creates it at this commit when the draft is published.
+        git tag "v${DESIRED_VERSION}"
+        sed -n "/${DESIRED_VERSION}/,/${CURRENT_VERSION}/{/${CURRENT_VERSION}/!p;}" CHANGELOG.md > /tmp/notes.md
+        export PATH="${PWD}/bin:${PATH}"
+        goreleaser release --clean --release-notes=/tmp/notes.md
 
     # Note: the release created above is a draft, so the v${DESIRED_VERSION} git
     # tag does not exist yet. Tagging the apis/ submodule and refreshing the Go

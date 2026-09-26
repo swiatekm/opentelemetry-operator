@@ -47,6 +47,9 @@ OPERATOR_LDFLAGS ?= -X ${VERSION_PKG}.version=${VERSION}\
 	-X ${VERSION_PKG}.autoInstrumentationApacheHttpd=${DEFAULT_INSTRUMENTATION_APACHE_HTTPD_VERSION}\
 	-X ${VERSION_PKG}.autoInstrumentationNginx=${DEFAULT_INSTRUMENTATION_NGINX_VERSION}
 ARCH ?= $(shell go env GOARCH)
+GOOS ?= $(shell go env GOOS)
+# Binaries are laid out as <os>/<arch>/<name>, matching the image build context GoReleaser creates.
+BUILD_DIR ?= bin/build
 ifeq ($(shell uname), Darwin)
   SED_INPLACE := sed -i ''
 else
@@ -257,22 +260,22 @@ update: generate manifests bundle api-docs update-example-images reset
 # Build manager binary
 .PHONY: manager
 manager: generate
-	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(ARCH) go build -o bin/manager_${ARCH} -trimpath -ldflags "${COMMON_LDFLAGS} ${OPERATOR_LDFLAGS}" main.go
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(ARCH) go build -o ${BUILD_DIR}/${GOOS}/${ARCH}/manager -trimpath -ldflags "${COMMON_LDFLAGS} ${OPERATOR_LDFLAGS}" main.go
 
 # Build must-gather diagnostic utility
 .PHONY: must-gather
 must-gather:
-	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(ARCH) go build -o bin/must-gather_${ARCH} -trimpath -ldflags "${COMMON_LDFLAGS}" ./cmd/gather/main.go
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(ARCH) go build -o ${BUILD_DIR}/${GOOS}/${ARCH}/must-gather -trimpath -ldflags "${COMMON_LDFLAGS}" ./cmd/gather/main.go
 
 # Build target allocator binary
 .PHONY: targetallocator
 targetallocator:
-	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(ARCH) go build -o cmd/otel-allocator/bin/targetallocator_${ARCH} -trimpath -ldflags "${COMMON_LDFLAGS}" ./cmd/otel-allocator
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(ARCH) go build -o ${BUILD_DIR}/${GOOS}/${ARCH}/targetallocator -trimpath -ldflags "${COMMON_LDFLAGS}" ./cmd/otel-allocator
 
 # Build opamp bridge binary
 .PHONY: operator-opamp-bridge
 operator-opamp-bridge: generate
-	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(ARCH) go build -o cmd/operator-opamp-bridge/bin/opampbridge_${ARCH} -trimpath -ldflags "${COMMON_LDFLAGS} ${OPERATOR_LDFLAGS}" ./cmd/operator-opamp-bridge
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(ARCH) go build -o ${BUILD_DIR}/${GOOS}/${ARCH}/opampbridge -trimpath -ldflags "${COMMON_LDFLAGS} ${OPERATOR_LDFLAGS}" ./cmd/operator-opamp-bridge
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
 .PHONY: run
@@ -698,7 +701,7 @@ scorecard-tests: operator-sdk
 .PHONY: container
 container: GOOS = linux
 container: manager
-	docker build --load -t ${IMG} .
+	docker build --load -t ${IMG} -f Dockerfile ${BUILD_DIR}
 
 # Push the container image, used only for local dev purposes
 .PHONY: container-push
@@ -719,13 +722,13 @@ container-operator-opamp-bridge-push:
 .PHONY: container-target-allocator
 container-target-allocator: GOOS = linux
 container-target-allocator: targetallocator
-	docker build --load -t ${TARGETALLOCATOR_IMG} cmd/otel-allocator
+	docker build --load -t ${TARGETALLOCATOR_IMG} -f cmd/otel-allocator/Dockerfile ${BUILD_DIR}
 
 # Build operator OpAMP bridge container image
 .PHONY: container-operator-opamp-bridge
 container-operator-opamp-bridge: GOOS = linux
 container-operator-opamp-bridge: operator-opamp-bridge
-	docker build --load -t ${OPERATOROPAMPBRIDGE_IMG} cmd/operator-opamp-bridge
+	docker build --load -t ${OPERATOROPAMPBRIDGE_IMG} -f cmd/operator-opamp-bridge/Dockerfile ${BUILD_DIR}
 
 # Build every e2e test app image from tests/test-e2e-apps, tagged as the test
 # manifests reference them. The python app is built twice, matching the two
@@ -743,7 +746,7 @@ container-test-e2e-apps:
 .PHONY: container-must-gather
 container-must-gather: GOOS = linux
 container-must-gather: must-gather
-	docker build -f cmd/gather/Dockerfile --load -t ${MUSTGATHER_IMG} .
+	docker build -f cmd/gather/Dockerfile --load -t ${MUSTGATHER_IMG} ${BUILD_DIR}
 
 # Push must-gather container image
 .PHONY: container-must-gather-push
@@ -905,6 +908,7 @@ GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 CHAINSAW ?= $(LOCALBIN)/chainsaw
 GOTESTSUM ?= $(LOCALBIN)/gotestsum
 GOVULNCHECK ?= $(LOCALBIN)/govulncheck
+GORELEASER ?= $(LOCALBIN)/goreleaser
 
 # renovate: datasource=go depName=sigs.k8s.io/kustomize/kustomize/v5
 KUSTOMIZE_VERSION ?= v5.8.1
@@ -920,6 +924,8 @@ CHAINSAW_VERSION ?= v0.2.15
 GOTESTSUM_VERSION ?= v1.13.0
 # renovate: datasource=go depName=golang.org/x/vuln/cmd/govulncheck
 GOVULNCHECK_VERSION ?= v1.8.0
+# renovate: datasource=go depName=github.com/goreleaser/goreleaser/v2
+GORELEASER_VERSION ?= v2.18.2
 PROMTOOL ?= $(LOCALBIN)/promtool
 # promtool is the golden source for the target-allocator conformance suite. It must match
 # the prometheus/prometheus library the operator links against, so derive the release version
@@ -971,6 +977,11 @@ gotestsum: ## Find or download gotestsum
 .PHONY: govulncheck
 govulncheck: ## Download govulncheck locally if necessary.
 	$(call go-install-tool,$(GOVULNCHECK),golang.org/x/vuln/cmd/govulncheck,$(GOVULNCHECK_VERSION))
+
+# Download goreleaser locally if necessary
+.PHONY: goreleaser
+goreleaser: ## Download goreleaser locally if necessary.
+	$(call go-install-tool,$(GORELEASER),github.com/goreleaser/goreleaser/v2,$(GORELEASER_VERSION))
 
 # Download promtool locally if necessary (conformance suite golden source; can't be go-installed
 # because prometheus/prometheus uses replace directives, so pull the release binary).
@@ -1229,6 +1240,13 @@ endif
 	$(COSIGN) sign --yes --upload=$(UPLOAD) "$(IMAGE)@$(DIGEST)"
 
 ##@ Release
+
+# Build every released binary and image, and the release manifests, without
+# publishing anything. Images are loaded into the local docker daemon, one per
+# platform, with the platform appended to the tag.
+.PHONY: goreleaser-snapshot
+goreleaser-snapshot: goreleaser ## Run the release pipeline locally without publishing
+	$(GORELEASER) release --snapshot --clean
 
 .PHONY: create-release-issue
 create-release-issue: ## Create a GitHub issue for the next release (use DRY_RUN=true to preview)

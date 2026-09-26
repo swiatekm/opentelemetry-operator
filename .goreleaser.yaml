@@ -1,0 +1,159 @@
+# GoReleaser configuration for the operator, target allocator, OpAMP bridge and
+# must-gather binaries and images, and the GitHub release.
+#
+# Local, nothing pushed:   make goreleaser-snapshot
+# CI, release:             goreleaser release --clean --release-notes=<file>
+# CI, main branch images:  MAIN_BUILD=true goreleaser release --clean --skip=validate
+version: 2
+
+project_name: opentelemetry-operator
+
+# dist/ also holds the release manifests written by `make release-artifacts`,
+# which --clean must not remove.
+dist: dist/goreleaser
+
+git:
+  # The apis/ module is tagged apis/vX.Y.Z at the same commit as the operator.
+  ignore_tags:
+    - "apis/*"
+
+env:
+  - IMG_PREFIX={{ envOrDefault "IMG_PREFIX" (printf "ghcr.io/%s/opentelemetry-operator" (envOrDefault "GITHUB_REPOSITORY_OWNER" "open-telemetry")) }}
+  - VERSION_PKG=github.com/open-telemetry/opentelemetry-operator/internal/version
+  - OTELCOL_VERSION={{ trimprefix (filter (readFile "versions.txt") "^opentelemetry-collector=") "opentelemetry-collector=" }}
+  - TARGETALLOCATOR_VERSION={{ trimprefix (filter (readFile "versions.txt") "^targetallocator=") "targetallocator=" }}
+  - OPERATOR_OPAMP_BRIDGE_VERSION={{ trimprefix (filter (readFile "versions.txt") "^operator-opamp-bridge=") "operator-opamp-bridge=" }}
+  - JAVA_VERSION={{ trimprefix (filter (readFile "versions.txt") "^autoinstrumentation-java=") "autoinstrumentation-java=" }}
+  - NODEJS_VERSION={{ trimprefix (filter (readFile "versions.txt") "^autoinstrumentation-nodejs=") "autoinstrumentation-nodejs=" }}
+  - PYTHON_VERSION={{ trimprefix (filter (readFile "versions.txt") "^autoinstrumentation-python=") "autoinstrumentation-python=" }}
+  - DOTNET_VERSION={{ trimprefix (filter (readFile "versions.txt") "^autoinstrumentation-dotnet=") "autoinstrumentation-dotnet=" }}
+  - GO_VERSION={{ trimprefix (filter (readFile "versions.txt") "^autoinstrumentation-go=") "autoinstrumentation-go=" }}
+  - APACHE_HTTPD_VERSION={{ trimprefix (filter (readFile "versions.txt") "^autoinstrumentation-apache-httpd=") "autoinstrumentation-apache-httpd=" }}
+  - NGINX_VERSION={{ trimprefix (filter (readFile "versions.txt") "^autoinstrumentation-nginx=") "autoinstrumentation-nginx=" }}
+
+before:
+  hooks:
+    # Installation manifests attached to the GitHub release.
+    - '{{ if isEnvSet "MAIN_BUILD" }}true{{ else }}make release-artifacts IMG_PREFIX={{ .Env.IMG_PREFIX }} VERSION={{ .Version }}{{ end }}'
+
+builds:
+  - &build
+    id: manager
+    binary: manager
+    main: .
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64, s390x, ppc64le]
+    flags: [-trimpath]
+    ldflags: &operator_ldflags
+      - -s -w
+      # On main, the caller passes `git describe --match 'v*'` output, as
+      # .Summary also matches apis/* tags.
+      - -X {{ .Env.VERSION_PKG }}.version={{ envOrDefault "BINARY_VERSION" .Version }}
+      - -X {{ .Env.VERSION_PKG }}.buildDate={{ .Date }}
+      - -X {{ .Env.VERSION_PKG }}.otelCol={{ .Env.OTELCOL_VERSION }}
+      - -X {{ .Env.VERSION_PKG }}.targetAllocator={{ .Env.TARGETALLOCATOR_VERSION }}
+      - -X {{ .Env.VERSION_PKG }}.operatorOpAMPBridge={{ .Env.OPERATOR_OPAMP_BRIDGE_VERSION }}
+      - -X {{ .Env.VERSION_PKG }}.autoInstrumentationJava={{ .Env.JAVA_VERSION }}
+      - -X {{ .Env.VERSION_PKG }}.autoInstrumentationNodeJS={{ .Env.NODEJS_VERSION }}
+      - -X {{ .Env.VERSION_PKG }}.autoInstrumentationPython={{ .Env.PYTHON_VERSION }}
+      - -X {{ .Env.VERSION_PKG }}.autoInstrumentationDotNet={{ .Env.DOTNET_VERSION }}
+      - -X {{ .Env.VERSION_PKG }}.autoInstrumentationGo={{ .Env.GO_VERSION }}
+      - -X {{ .Env.VERSION_PKG }}.autoInstrumentationApacheHttpd={{ .Env.APACHE_HTTPD_VERSION }}
+      - -X {{ .Env.VERSION_PKG }}.autoInstrumentationNginx={{ .Env.NGINX_VERSION }}
+  - <<: *build
+    id: targetallocator
+    binary: targetallocator
+    main: ./cmd/otel-allocator
+    ldflags: [-s -w]
+  - <<: *build
+    id: opampbridge
+    binary: opampbridge
+    main: ./cmd/operator-opamp-bridge
+  - <<: *build
+    id: must-gather
+    binary: must-gather
+    main: ./cmd/gather
+    ldflags: [-s -w]
+
+# The binaries are only shipped inside images.
+archives:
+  - formats: [none]
+
+checksum:
+  disable: true
+
+dockers_v2:
+  - &image
+    id: manager
+    ids: [manager]
+    dockerfile: Dockerfile
+    images:
+      - "{{ .Env.IMG_PREFIX }}/opentelemetry-operator"
+      - '{{ if isEnvSet "DOCKER_USERNAME" }}otel/opentelemetry-operator{{ end }}'
+    platforms: [linux/amd64, linux/arm64, linux/s390x, linux/ppc64le]
+    # Mirrors the tags docker/metadata-action generated.
+    tags:
+      - '{{ if isEnvSet "MAIN_BUILD" }}main{{ else }}{{ .Version }}{{ end }}'
+      - '{{ if not (or .IsSnapshot (isEnvSet "MAIN_BUILD")) }}{{ .Major }}.{{ .Minor }}{{ end }}'
+      - '{{ if not (or .IsSnapshot (isEnvSet "MAIN_BUILD")) }}{{ .Tag }}{{ end }}'
+      - '{{ if not (or .IsSnapshot (isEnvSet "MAIN_BUILD") .Prerelease) }}latest{{ end }}'
+    labels: &labels
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: &repo_url '{{ envOrDefault "GITHUB_SERVER_URL" "https://github.com" }}/{{ envOrDefault "GITHUB_REPOSITORY" "open-telemetry/opentelemetry-operator" }}'
+      org.opencontainers.image.url: *repo_url
+      org.opencontainers.image.version: '{{ if isEnvSet "MAIN_BUILD" }}main{{ else }}{{ .Version }}{{ end }}'
+      org.opencontainers.image.licenses: Apache-2.0
+    sbom: false
+  - <<: *image
+    id: targetallocator
+    ids: [targetallocator]
+    dockerfile: cmd/otel-allocator/Dockerfile
+    images:
+      - "{{ .Env.IMG_PREFIX }}/target-allocator"
+      - '{{ if isEnvSet "DOCKER_USERNAME" }}otel/target-allocator{{ end }}'
+  - <<: *image
+    id: opampbridge
+    ids: [opampbridge]
+    dockerfile: cmd/operator-opamp-bridge/Dockerfile
+    images:
+      - "{{ .Env.IMG_PREFIX }}/operator-opamp-bridge"
+      - '{{ if isEnvSet "DOCKER_USERNAME" }}otel/operator-opamp-bridge{{ end }}'
+  - <<: *image
+    id: must-gather
+    ids: [must-gather]
+    dockerfile: cmd/gather/Dockerfile
+    images:
+      - "{{ .Env.IMG_PREFIX }}/must-gather"
+
+# Keyless signing, using the GitHub Actions OIDC token. Signatures of main
+# builds are only recorded in the transparency log, not pushed to the registry.
+# Setting COSIGN_KEY signs with that key and skips the public transparency log,
+# for rehearsing a release locally.
+docker_signs:
+  - cmd: cosign
+    artifacts: images
+    args:
+      - sign
+      - --yes
+      - '--upload={{ if isEnvSet "MAIN_BUILD" }}false{{ else }}true{{ end }}'
+      - '--key={{ envOrDefault "COSIGN_KEY" "" }}'
+      - '--tlog-upload={{ not (isEnvSet "COSIGN_KEY") }}'
+      - "${artifact}@${digest}"
+
+changelog:
+  disable: true
+
+release:
+  disable: '{{ or (isEnvSet "MAIN_BUILD") (isEnvSet "SKIP_GITHUB_RELEASE") }}'
+  draft: true
+  # The tag only exists locally until the draft is published.
+  target_commitish: "{{ .FullCommit }}"
+  name_template: "Release {{ .Tag }}"
+  extra_files:
+    - glob: dist/opentelemetry-operator.yaml
+      name_template: opentelemetry-operator.yaml
+    - glob: dist/opentelemetry-operator-openshift.yaml
+      name_template: opentelemetry-operator-openshift.yaml
