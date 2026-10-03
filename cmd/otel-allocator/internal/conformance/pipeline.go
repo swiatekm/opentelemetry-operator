@@ -82,7 +82,7 @@ func runAllocatorPipeline(t *testing.T, promYAML string) map[targetKey][]allocat
 	}
 
 	// Pass 1: filtering off — all discovered targets, post-merge / pre-relabel.
-	allItems := runDiscovery(t, tsets, config.FilterStrategyNone, nil)
+	allItems := runDiscovery(t, tsets, config.FilterStrategyNone, cfg.ScrapeConfigs)
 	// Pass 2: filtering on — the survivors, carrying the relabel identity hash.
 	kept := runDiscovery(t, tsets, config.FilterStrategyRelabelConfig, cfg.ScrapeConfigs)
 
@@ -113,7 +113,7 @@ func runAllocatorPipeline(t *testing.T, promYAML string) map[targetKey][]allocat
 // runDiscovery drives the allocator's real discovery pipeline once over tsets and
 // returns the targets it produces. With filterStrategy set, relabel filtering is
 // applied (scrapeConfigs supply the relabel rules and the same no-sharding handling
-// as production); otherwise every merged target is returned, pre-relabel.
+// as production); otherwise every target is returned, pre-relabel.
 //
 // Target sets are injected directly via UpdateTsets, so no real service discovery
 // runs — a fake discovery manager stands in for the real one.
@@ -124,9 +124,7 @@ func runDiscovery(t *testing.T, tsets map[string][]*targetgroup.Group, filterStr
 		captured = items
 	})
 	require.NoError(t, err)
-	if len(scrapeConfigs) > 0 {
-		require.NoError(t, d.ApplyConfig(watcher.EventSourceConfigMap, scrapeConfigs))
-	}
+	require.NoError(t, d.ApplyConfig(watcher.EventSourceConfigMap, scrapeConfigs))
 	d.UpdateTsets(tsets)
 	d.Reload()
 	return captured

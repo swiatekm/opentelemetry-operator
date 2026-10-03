@@ -496,16 +496,21 @@ func TestProcessTargetGroups_StableLabelIterationOrder(t *testing.T) {
 	manager := discovery.NewManager(ctx, config.NopLogger, registry, sdMetrics)
 	d, err := NewDiscoverer(ctrl.Log.WithName("test"), manager, config.FilterStrategyRelabelConfig, scu, nil)
 	require.NoError(t, err)
-	results := d.processTargetGroups("test", groups, nil, nil)
+	scrapeCfg := testScrapeConfig("test")
+	results := d.processTargetGroups("test", groups, scrapeCfg, nil)
 	require.Len(t, results, 1)
 
-	i := 0
+	var names []string
 	results[0].Labels.Range(func(l labels.Label) {
-		expected := string(rune('a' + i))
-		assert.Equal(t, expected, l.Name, "unexpected label key at index %d", i)
-		assert.Equal(t, expected, l.Value, "unexpected label value at index %d", i)
-		i++
+		names = append(names, l.Name)
+		if len(l.Name) == 1 {
+			assert.Equal(t, l.Name, l.Value)
+		}
 	})
+	assert.True(t, slices.IsSorted(names), "labels must be sorted: %v", names)
+	for i := 'a'; i <= 'z'; i++ {
+		assert.Contains(t, names, string(i))
+	}
 }
 
 func BenchmarkApplyScrapeConfig(b *testing.B) {
@@ -573,6 +578,16 @@ func (m *mockScrapeConfigUpdater) UpdateScrapeConfigResponse(cfg map[string]*pro
 	return nil
 }
 
+func testScrapeConfig(jobName string) *promconfig.ScrapeConfig {
+	return &promconfig.ScrapeConfig{
+		JobName:        jobName,
+		Scheme:         "http",
+		MetricsPath:    "/metrics",
+		ScrapeInterval: model.Duration(time.Minute),
+		ScrapeTimeout:  model.Duration(10 * time.Second),
+	}
+}
+
 func newTestDiscoverer(t testing.TB, filterStrategy config.FilterStrategy, setTargets func([]*Item)) *Discoverer {
 	t.Helper()
 	registry := prometheus.NewRegistry()
@@ -607,7 +622,7 @@ func TestProcessTargetGroupsRelabelFiltering(t *testing.T) {
 		},
 	}
 
-	got := d.processTargetGroups("test", groups, relabelCfg, nil)
+	got := d.processTargetGroups("test", groups, testScrapeConfig("test"), relabelCfg)
 	require.Len(t, got, 2)
 	gotURLs := []string{got[0].TargetURL, got[1].TargetURL}
 	slices.Sort(gotURLs)
@@ -619,8 +634,8 @@ func TestProcessTargetGroupsRelabelFiltering(t *testing.T) {
 
 // TestProcessTargetGroupsSeededLabels verifies that relabel rules referencing
 // labels Prometheus seeds before relabeling (job, __scheme__, ...) make the same
-// keep/drop decisions as Prometheus, and that the seeds neither leak into the
-// served labels nor override labels already present on the target.
+// keep/drop decisions as Prometheus, and that the seeds are part of the served
+// labels without overriding labels already present on the target.
 // Regression test for https://github.com/open-telemetry/opentelemetry-operator/issues/5246.
 func TestProcessTargetGroupsSeededLabels(t *testing.T) {
 	d := newTestDiscoverer(t, config.FilterStrategyRelabelConfig, nil)
@@ -631,7 +646,6 @@ func TestProcessTargetGroupsSeededLabels(t *testing.T) {
 		ScrapeInterval: model.Duration(time.Minute),
 		ScrapeTimeout:  model.Duration(10 * time.Second),
 	}
-	seeds := scrapeConfigSeeds(scrapeCfg)
 	groups := []*targetgroup.Group{
 		{
 			Targets: []model.LabelSet{
@@ -650,14 +664,17 @@ func TestProcessTargetGroupsSeededLabels(t *testing.T) {
 				Action:       relabel.Keep,
 			},
 		}
-		got := d.processTargetGroups("seeded-job", groups, relabelCfg, seeds)
+		got := d.processTargetGroups("seeded-job", groups, scrapeCfg, relabelCfg)
 		require.Len(t, got, 2)
 		for _, item := range got {
-			assert.Empty(t, item.Labels.Get("job"), "seeds must not leak into the served labels")
+			assert.Equal(t, "seeded-job", item.Labels.Get(model.JobLabel))
+			assert.Equal(t, "/metrics", item.Labels.Get(model.MetricsPathLabel))
+			assert.Equal(t, "1m", item.Labels.Get(model.ScrapeIntervalLabel))
+			assert.Equal(t, "10s", item.Labels.Get(model.ScrapeTimeoutLabel))
 		}
 		byURL := map[string]*Item{got[0].TargetURL: got[0], got[1].TargetURL: got[1]}
-		assert.Empty(t, byURL["10.0.0.1:9090"].Labels.Get(model.SchemeLabel), "seeds must not leak into the served labels")
-		assert.Equal(t, "https", byURL["10.0.0.2:9090"].Labels.Get(model.SchemeLabel), "target-provided labels must be served verbatim")
+		assert.Equal(t, "http", byURL["10.0.0.1:9090"].Labels.Get(model.SchemeLabel))
+		assert.Equal(t, "https", byURL["10.0.0.2:9090"].Labels.Get(model.SchemeLabel), "target-provided labels must take precedence")
 	})
 
 	t.Run("drop on seeded job label", func(t *testing.T) {
@@ -668,7 +685,7 @@ func TestProcessTargetGroupsSeededLabels(t *testing.T) {
 				Action:       relabel.Drop,
 			},
 		}
-		got := d.processTargetGroups("seeded-job", groups, relabelCfg, seeds)
+		got := d.processTargetGroups("seeded-job", groups, scrapeCfg, relabelCfg)
 		assert.Empty(t, got)
 	})
 
@@ -680,7 +697,7 @@ func TestProcessTargetGroupsSeededLabels(t *testing.T) {
 				Action:       relabel.Keep,
 			},
 		}
-		got := d.processTargetGroups("seeded-job", groups, relabelCfg, seeds)
+		got := d.processTargetGroups("seeded-job", groups, scrapeCfg, relabelCfg)
 		require.Len(t, got, 1)
 		assert.Equal(t, "10.0.0.1:9090", got[0].TargetURL, "the https target must not match the seeded http scheme")
 	})
@@ -700,7 +717,7 @@ func TestProcessTargetGroupsNoRelabelConfig(t *testing.T) {
 		},
 	}
 
-	got := d.processTargetGroups("test", groups, nil, nil)
+	got := d.processTargetGroups("test", groups, testScrapeConfig("test"), nil)
 	require.Len(t, got, 2)
 	for _, item := range got {
 		// The hash is computed at creation, from the same builder-based function whether or not
@@ -730,7 +747,7 @@ func TestProcessTargetGroupsDeduplicatesByHash(t *testing.T) {
 		},
 	}
 
-	got := d.processTargetGroups("test", groups, relabelCfg, nil)
+	got := d.processTargetGroups("test", groups, testScrapeConfig("test"), relabelCfg)
 	require.Len(t, got, 2)
 	assert.Equal(t, got[0].Hash(), got[1].Hash(), "targets identical after relabeling should share a hash")
 }
@@ -794,4 +811,22 @@ func TestReloadSkipsRelabelFilteringWhenDisabled(t *testing.T) {
 	d.Reload()
 	require.Len(t, got, 1, "filtering disabled: target should be kept despite the drop config")
 	assert.Equal(t, "10.0.0.1:9090", got[0].TargetURL)
+}
+
+// TestReloadSkipsJobsWithoutScrapeConfig verifies that target sets for jobs without a scrape config
+// are ignored, as in Prometheus, since their labels can't be initialized.
+func TestReloadSkipsJobsWithoutScrapeConfig(t *testing.T) {
+	var got []*Item
+	d := newTestDiscoverer(t, config.FilterStrategyNone, func(targets []*Item) { got = targets })
+
+	require.NoError(t, d.ApplyConfig(allocatorWatcher.EventSourceConfigMap, []*promconfig.ScrapeConfig{testScrapeConfig("known")}))
+	d.UpdateTsets(map[string][]*targetgroup.Group{
+		"known":   {{Targets: []model.LabelSet{{model.AddressLabel: "10.0.0.1:9090"}}}},
+		"unknown": {{Targets: []model.LabelSet{{model.AddressLabel: "10.0.0.2:9090"}}}},
+	})
+
+	d.Reload()
+	require.Len(t, got, 1)
+	assert.Equal(t, "known", got[0].JobName)
+	assert.Equal(t, "known", got[0].Labels.Get(model.JobLabel))
 }

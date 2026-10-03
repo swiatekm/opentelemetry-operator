@@ -2,9 +2,12 @@
   {
     "discoveredLabels": {
       "__address__": "10.2.0.1:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__metrics_path__": "/metrics",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "a": "foo",
       "b": "bar",
@@ -15,9 +18,12 @@
   {
     "discoveredLabels": {
       "__address__": "10.2.0.2:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__metrics_path__": "/metrics",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "a": "foo",
       "job": "drop-then-replace-pipeline"
@@ -27,18 +33,24 @@
   {
     "discoveredLabels": {
       "__address__": "10.2.0.3:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__metrics_path__": "/metrics",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "a": "foo",
       "job": "drop-nomatch-keeps"
     },
     "labels": {
       "__address__": "10.2.0.3:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__metrics_path__": "/metrics",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "a": "foo",
       "instance": "10.2.0.3:9100",
@@ -48,18 +60,24 @@
   {
     "discoveredLabels": {
       "__address__": "10.2.0.4:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__metrics_path__": "/metrics",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "a": "foo",
       "job": "drop-partial-regex-keeps"
     },
     "labels": {
       "__address__": "10.2.0.4:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__metrics_path__": "/metrics",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "a": "foo",
       "instance": "10.2.0.4:9100",
@@ -69,9 +87,12 @@
   {
     "discoveredLabels": {
       "__address__": "10.2.0.5:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__metrics_path__": "/metrics",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "a": "foo",
       "job": "keep-nomatch-drops"
@@ -81,18 +102,24 @@
   {
     "discoveredLabels": {
       "__address__": "10.2.0.6:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__metrics_path__": "/metrics",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "a": "foo",
       "job": "keep-match"
     },
     "labels": {
       "__address__": "10.2.0.6:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__metrics_path__": "/metrics",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "a": "foo",
       "instance": "10.2.0.6:9100",

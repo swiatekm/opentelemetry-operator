@@ -2,9 +2,12 @@
   {
     "discoveredLabels": {
       "__address__": "10.7.0.1:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__metrics_path__": "/metrics",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "a": "foo",
       "b1": "bar",
@@ -13,9 +16,12 @@
     },
     "labels": {
       "__address__": "10.7.0.1:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__metrics_path__": "/metrics",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "a": "foo",
       "instance": "10.7.0.1:9100",

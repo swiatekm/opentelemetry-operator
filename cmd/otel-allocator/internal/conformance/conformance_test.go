@@ -21,19 +21,6 @@ import (
 
 var update = flag.Bool("update", false, "regenerate golden.json files via promtool ($PROMTOOL)")
 
-// seededLabels are the labels Prometheus's scrape layer (PopulateLabels) adds
-// before relabeling, which the target allocator intentionally does not seed
-// (the collector's prometheus receiver adds them later). They are excluded when
-// comparing the allocator's served pre-relabel labels to Prometheus's
-// discoveredLabels.
-var seededLabels = []string{
-	"job",
-	"__scheme__",
-	"__metrics_path__",
-	"__scrape_interval__",
-	"__scrape_timeout__",
-}
-
 // divergentFixtures are fixtures whose behavior is known to differ from raw
 // Prometheus. They are skipped until the allocator is fixed.
 var divergentFixtures = map[string]string{}
@@ -93,8 +80,7 @@ type matchedPair struct {
 //
 //	keep/drop parity:    the allocator keeps a target iff Prometheus does.
 //	merge fidelity:      the allocator's served (pre-relabel) labels equal
-//	                     Prometheus's discoveredLabels minus the scrape labels it
-//	                     defers to the receiver.
+//	                     Prometheus's discoveredLabels.
 //	identity grouping:   the allocator's identity-hash partition equals
 //	                     Prometheus's post-relabel-label partition (no silent
 //	                     collisions, no false splits).
@@ -119,7 +105,7 @@ func compare(allocator map[targetKey][]allocatorResult, golden map[targetKey][]g
 		if want := !p.gt.dropped(); want != p.a.kept {
 			mismatches = append(mismatches, fmt.Sprintf("keep/drop mismatch for %+v: Prometheus kept=%v, allocator kept=%v", p.key, want, p.a.kept))
 		}
-		if want, got := withoutSeeded(p.gt.DiscoveredLabels), p.a.item.Labels; !labels.Equal(want, got) {
+		if want, got := p.gt.DiscoveredLabels, p.a.item.Labels; !labels.Equal(want, got) {
 			mismatches = append(mismatches, fmt.Sprintf("merge/discovered-label mismatch for %+v:\n      want %v\n      got  %v", p.key, want, got))
 		}
 	}
@@ -142,7 +128,7 @@ func matchBucket(key targetKey, al []allocatorResult, gl []goldenTarget) (pairs 
 		ah := a.item.Labels.Hash()
 		match := -1
 		for i, g := range gl {
-			if !used[i] && withoutSeeded(g.DiscoveredLabels).Hash() == ah {
+			if !used[i] && g.DiscoveredLabels.Hash() == ah {
 				match = i
 				break
 			}
@@ -156,7 +142,7 @@ func matchBucket(key targetKey, al []allocatorResult, gl []goldenTarget) (pairs 
 	}
 	for i, g := range gl {
 		if !used[i] {
-			unmatched = append(unmatched, fmt.Sprintf("Prometheus target %+v %v has no matching allocator target", key, withoutSeeded(g.DiscoveredLabels)))
+			unmatched = append(unmatched, fmt.Sprintf("Prometheus target %+v %v has no matching allocator target", key, g.DiscoveredLabels))
 		}
 	}
 	return pairs, unmatched
@@ -187,9 +173,4 @@ func identityPartitionMismatches(pairs []matchedPair) []string {
 		}
 	}
 	return mismatches
-}
-
-// withoutSeeded returns the label set with the Prometheus-seeded labels removed.
-func withoutSeeded(ls labels.Labels) labels.Labels {
-	return labels.NewBuilder(ls).Del(seededLabels...).Labels()
 }

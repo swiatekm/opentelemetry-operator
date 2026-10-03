@@ -7,7 +7,6 @@ import (
 	"context"
 	"hash"
 	"hash/fnv"
-	"slices"
 	"sync"
 	"time"
 
@@ -19,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
+	"github.com/prometheus/prometheus/scrape"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -28,8 +28,6 @@ import (
 	allocatorWatcher "github.com/open-telemetry/opentelemetry-operator/cmd/otel-allocator/internal/watcher"
 )
 
-const labelBuilderPreallocSize = 100
-
 type Discoverer struct {
 	log                         logr.Logger
 	manager                     discoveryManager
@@ -37,7 +35,7 @@ type Discoverer struct {
 	mtxScrape                   sync.Mutex // Guards the fields below.
 	configsMap                  map[allocatorWatcher.EventSource][]*promconfig.ScrapeConfig
 	relabelCfg                  map[string][]*relabel.Config
-	scrapeSeeds                 map[string][]labels.Label
+	scrapeConfigs               map[string]*promconfig.ScrapeConfig
 	filterRelabelConfig         bool
 	scrapeConfigsHash           hash.Hash
 	scrapeConfigsUpdater        scrapeConfigsUpdater
@@ -104,7 +102,7 @@ func NewDiscoverer(
 		triggerReload:               make(chan struct{}, 1),
 		configsMap:                  make(map[allocatorWatcher.EventSource][]*promconfig.ScrapeConfig),
 		relabelCfg:                  make(map[string][]*relabel.Config),
-		scrapeSeeds:                 make(map[string][]labels.Label),
+		scrapeConfigs:               make(map[string]*promconfig.ScrapeConfig),
 		filterRelabelConfig:         filterStrategy == config.FilterStrategyRelabelConfig,
 		scrapeConfigsHash:           nil, // we want the first update to succeed even if the config is empty
 		scrapeConfigsUpdater:        scrapeConfigsUpdater,
@@ -126,7 +124,6 @@ func (m *Discoverer) ApplyConfig(source allocatorWatcher.EventSource, scrapeConf
 
 	discoveryCfg := make(map[string]discovery.Configs)
 	relabelCfg := make(map[string][]*relabel.Config)
-	scrapeSeeds := make(map[string][]labels.Label)
 
 	for _, configs := range m.configsMap {
 		for _, scrapeConfig := range configs {
@@ -138,7 +135,6 @@ func (m *Discoverer) ApplyConfig(source allocatorWatcher.EventSource, scrapeConf
 			// we leave relabelCfg empty so no relabeling/filtering is done during discovery.
 			if m.filterRelabelConfig {
 				relabelCfg[scrapeConfig.JobName] = addNoShardingConfig(scrapeConfig.RelabelConfigs)
-				scrapeSeeds[scrapeConfig.JobName] = scrapeConfigSeeds(scrapeConfig)
 			}
 		}
 	}
@@ -160,7 +156,7 @@ func (m *Discoverer) ApplyConfig(source allocatorWatcher.EventSource, scrapeConf
 
 	m.mtxScrape.Lock()
 	m.relabelCfg = relabelCfg
-	m.scrapeSeeds = scrapeSeeds
+	m.scrapeConfigs = jobToScrapeConfig
 	m.mtxScrape.Unlock()
 
 	return m.manager.ApplyConfig(discoveryCfg)
@@ -224,14 +220,19 @@ func (m *Discoverer) Reload() {
 	jobResults := make([][]*Item, len(m.targetSets))
 	jobIndex := 0
 	for jobName, groups := range m.targetSets {
+		scrapeConfig, ok := m.scrapeConfigs[jobName]
+		if !ok {
+			// Prometheus also ignores target sets for jobs it has no scrape config for.
+			m.log.V(int(zapcore.DebugLevel)).Info("Skipping targets for job without a scrape config", "job", jobName)
+			continue
+		}
 		relabelCfg := m.relabelCfg[jobName]
-		seeds := m.scrapeSeeds[jobName]
 		wg.Add(1)
 		// Run the sync in parallel as these take a while and at high load can't catch up.
-		go func(idx int, jobName string, groups []*targetgroup.Group, relabelCfg []*relabel.Config, seeds []labels.Label) {
+		go func(idx int, jobName string, groups []*targetgroup.Group, scrapeConfig *promconfig.ScrapeConfig, relabelCfg []*relabel.Config) {
 			defer wg.Done()
-			jobResults[idx] = m.processTargetGroups(jobName, groups, relabelCfg, seeds)
-		}(jobIndex, jobName, groups, relabelCfg, seeds)
+			jobResults[idx] = m.processTargetGroups(jobName, groups, scrapeConfig, relabelCfg)
+		}(jobIndex, jobName, groups, scrapeConfig, relabelCfg)
 		jobIndex++
 	}
 	m.mtxScrape.Unlock()
@@ -249,19 +250,12 @@ func (m *Discoverer) Reload() {
 }
 
 // processTargetGroups processes the target groups for a single job and returns the targets to be
-// scraped. The job's relabel configuration is applied as each target is created: targets dropped
-// by relabeling are excluded from the result, and for the targets that are kept the hash is
-// computed from the relabeled labels while the builder is still available, avoiding a later
-// recomputation.
-func (m *Discoverer) processTargetGroups(jobName string, groups []*targetgroup.Group, relabelCfg []*relabel.Config, seeds []labels.Label) []*Item {
-	// the builder for group labels
-	groupBuilder := labels.NewScratchBuilder(labelBuilderPreallocSize)
-
-	// a slice for sorting target label names, we allocate it here to avoid doing it in the hot loop
-	targetLabelNames := make([]model.LabelName, 0, labelBuilderPreallocSize)
-
-	// the builder used to apply relabeling to each target
-	relabelBuilder := labels.NewBuilder(labels.EmptyLabels())
+// scraped. Target labels are initialized from the target, its group, and the scrape config the same
+// way Prometheus does it. The job's relabel configuration is then applied: targets dropped by
+// relabeling are excluded from the result, and for the targets that are kept the hash is computed
+// from the relabeled labels while the builder is still available, avoiding a later recomputation.
+func (m *Discoverer) processTargetGroups(jobName string, groups []*targetgroup.Group, scrapeConfig *promconfig.ScrapeConfig, relabelCfg []*relabel.Config) []*Item {
+	builder := labels.NewBuilder(labels.EmptyLabels())
 
 	begin := time.Now()
 	defer func() {
@@ -276,56 +270,21 @@ func (m *Discoverer) processTargetGroups(jobName string, groups []*targetgroup.G
 	targets := make([]*Item, 0, targetCount)
 
 	var count float64
-	// Reusable slice for the sorted group labels, copied out of the builder once per group so the
-	// per-target merge below can reuse (and overwrite) the builder without losing the group labels.
-	groupSlice := make([]labels.Label, 0, labelBuilderPreallocSize)
-	var groupLabels labels.Labels
-
 	for _, tg := range groups {
-		groupBuilder.Reset()
-		for ln, lv := range tg.Labels {
-			groupBuilder.Add(string(ln), string(lv))
-		}
-		groupBuilder.Sort()
-		// Overwrite reuses the builder's internal buffer (no allocation after the first group).
-		groupBuilder.Overwrite(&groupLabels)
-		groupSlice = groupSlice[:0]
-		groupLabels.Range(func(l labels.Label) {
-			groupSlice = append(groupSlice, l)
-		})
-
 		for _, t := range tg.Targets {
 			count++
-			// Merge the sorted group labels with the target's labels into a single, globally sorted
-			// label set. Reusing groupBuilder is safe because groupSlice holds an independent copy of
-			// the group labels. The order matters: downstream consumers (and the conformance suite)
-			// rely on Item.Labels honoring Prometheus' sorted labels.Labels invariant.
-			targetBuilder := &groupBuilder
-			targetBuilder.Reset()
-			targetLabelNames = targetLabelNames[:0]
-			mergeLabels(targetBuilder, groupSlice, t, targetLabelNames)
-			itemLabels := targetBuilder.Labels()
+			scrape.PopulateDiscoveredLabels(builder, scrapeConfig, t, tg.Labels)
+			itemLabels := builder.Labels()
 
 			// Apply relabeling, then compute the target hash from the (possibly relabeled) labels
 			// while we still have the builder, skipping meta labels. Targets dropped by relabeling
-			// are excluded. We hash from the builder in both cases so the hash is computed once,
-			// here, rather than lazily later.
-			relabelBuilder.Reset(itemLabels)
+			// are excluded.
 			if len(relabelCfg) > 0 {
-				// Seed the labels Prometheus's scrape layer adds before relabeling
-				// (PopulateDiscoveredLabels), so keep/drop rules referencing them
-				// (e.g. job, __scheme__) behave the same as in Prometheus. Target and
-				// group labels take precedence, matching Prometheus.
-				for _, seed := range seeds {
-					if relabelBuilder.Get(seed.Name) == "" {
-						relabelBuilder.Set(seed.Name, seed.Value)
-					}
-				}
-				if keepTarget := relabel.ProcessBuilder(relabelBuilder, relabelCfg...); !keepTarget {
+				if keepTarget := relabel.ProcessBuilder(builder, relabelCfg...); !keepTarget {
 					continue
 				}
 			}
-			hash := HashFromBuilder(relabelBuilder, jobName)
+			hash := HashFromBuilder(builder, jobName)
 
 			targets = append(targets, NewItem(jobName, string(t[model.AddressLabel]), itemLabels, "", hash))
 		}
@@ -335,28 +294,6 @@ func (m *Discoverer) processTargetGroups(jobName string, groups []*targetgroup.G
 }
 
 const disableShardingLabelName = "__tmp_disable_sharding"
-
-// scrapeConfigSeeds returns the labels Prometheus's scrape layer sets on every
-// target before relabeling (see PopulateDiscoveredLabels): the scrape config's
-// job, scheme, metrics path, interval, timeout, and query params. The allocator
-// applies them transiently for relabeling and hashing only; they are not part of
-// the served target labels, which the collector's Prometheus receiver seeds itself.
-func scrapeConfigSeeds(cfg *promconfig.ScrapeConfig) []labels.Label {
-	seeds := make([]labels.Label, 0, 5+len(cfg.Params))
-	seeds = append(seeds,
-		labels.Label{Name: model.JobLabel, Value: cfg.JobName},
-		labels.Label{Name: model.ScrapeIntervalLabel, Value: cfg.ScrapeInterval.String()},
-		labels.Label{Name: model.ScrapeTimeoutLabel, Value: cfg.ScrapeTimeout.String()},
-		labels.Label{Name: model.MetricsPathLabel, Value: cfg.MetricsPath},
-		labels.Label{Name: model.SchemeLabel, Value: cfg.Scheme},
-	)
-	for k, v := range cfg.Params {
-		if len(v) > 0 {
-			seeds = append(seeds, labels.Label{Name: model.ParamLabelPrefix + k, Value: v[0]})
-		}
-	}
-	return seeds
-}
 
 // addNoShardingConfig adds a relabel config to disable sharding for the given job. This is needed because the scrape
 // configs generated by prometheus-operator by default depend on a `SHARD` environment variable, even in non-sharded
@@ -373,39 +310,6 @@ func addNoShardingConfig(cfg []*relabel.Config) []*relabel.Config {
 	dropTmpLabelConfig.Regex = relabel.MustNewRegexp(disableShardingLabelName)
 	output := append([]*relabel.Config{&noShardingRelabelConfig}, cfg...)
 	return append(output, &dropTmpLabelConfig)
-}
-
-// mergeLabels merges sorted group labels with target labels into the builder.
-// Target labels override group labels on name collision.
-func mergeLabels(builder *labels.ScratchBuilder, groupSlice []labels.Label, targetLabels model.LabelSet, targetLabelNamesBuf []model.LabelName) {
-	for ln := range targetLabels {
-		targetLabelNamesBuf = append(targetLabelNamesBuf, ln)
-	}
-	slices.Sort(targetLabelNamesBuf)
-
-	gi, ti := 0, 0
-	for gi < len(groupSlice) && ti < len(targetLabelNamesBuf) {
-		gn := groupSlice[gi].Name
-		tn := string(targetLabelNamesBuf[ti])
-		switch {
-		case gn < tn:
-			builder.Add(gn, groupSlice[gi].Value)
-			gi++
-		case gn > tn:
-			builder.Add(tn, string(targetLabels[targetLabelNamesBuf[ti]]))
-			ti++
-		default: // target label overrides group label
-			builder.Add(tn, string(targetLabels[targetLabelNamesBuf[ti]]))
-			gi++
-			ti++
-		}
-	}
-	for ; gi < len(groupSlice); gi++ {
-		builder.Add(groupSlice[gi].Name, groupSlice[gi].Value)
-	}
-	for ; ti < len(targetLabelNamesBuf); ti++ {
-		builder.Add(string(targetLabelNamesBuf[ti]), string(targetLabels[targetLabelNamesBuf[ti]]))
-	}
 }
 
 // Run receives and saves target set updates and triggers the scraping loops reloading.

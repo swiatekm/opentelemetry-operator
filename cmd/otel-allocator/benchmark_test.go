@@ -6,9 +6,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
@@ -41,7 +44,7 @@ func BenchmarkProcessTargets(b *testing.B) {
 		tsets := prepareBenchmarkData(numTargets, targetsPerGroup, groupsPerJob)
 		for _, strategy := range allocation.GetRegisteredAllocatorNames() {
 			b.Run(fmt.Sprintf("%s/%d", strategy, numTargets), func(b *testing.B) {
-				targetDiscoverer, err := createTestDiscoverer(strategy, map[string][]*relabel.Config{})
+				targetDiscoverer, err := createTestDiscoverer(strategy, slices.Collect(maps.Keys(tsets)), map[string][]*relabel.Config{})
 				require.NoError(b, err)
 				targetDiscoverer.UpdateTsets(tsets)
 				b.ResetTimer()
@@ -83,7 +86,7 @@ func BenchmarkProcessTargetsWithRelabelConfig(b *testing.B) {
 
 		for _, strategy := range allocation.GetRegisteredAllocatorNames() {
 			b.Run(fmt.Sprintf("%s/%d", strategy, numTargets), func(b *testing.B) {
-				targetDiscoverer, err := createTestDiscoverer(strategy, relabelConfig)
+				targetDiscoverer, err := createTestDiscoverer(strategy, slices.Collect(maps.Keys(tsets)), relabelConfig)
 				require.NoError(b, err)
 				targetDiscoverer.UpdateTsets(tsets)
 				b.ResetTimer()
@@ -168,7 +171,7 @@ func prepareBenchmarkData(numTargets, targetsPerGroup, groupsPerJob int) map[str
 	return tsets
 }
 
-func createTestDiscoverer(allocationStrategy string, relabelConfig map[string][]*relabel.Config) (*target.Discoverer, error) {
+func createTestDiscoverer(allocationStrategy string, jobNames []string, relabelConfig map[string][]*relabel.Config) (*target.Discoverer, error) {
 	ctx := context.Background()
 	logger := ctrl.Log.WithName(fmt.Sprintf("bench-%s", allocationStrategy))
 	ctrl.SetLogger(logr.New(log.NullLogSink{}))
@@ -195,19 +198,21 @@ func createTestDiscoverer(allocationStrategy string, relabelConfig map[string][]
 		return nil, err
 	}
 
-	// The relabel configs are delivered to the discoverer the same way they are in production:
-	// as part of the scrape configs via ApplyConfig.
-	if len(relabelConfig) > 0 {
-		scrapeConfigs := make([]*promconfig.ScrapeConfig, 0, len(relabelConfig))
-		for jobName, cfg := range relabelConfig {
-			scrapeConfigs = append(scrapeConfigs, &promconfig.ScrapeConfig{
-				JobName:        jobName,
-				RelabelConfigs: cfg,
-			})
-		}
-		if err := targetDiscoverer.ApplyConfig(allocatorWatcher.EventSourceConfigMap, scrapeConfigs); err != nil {
-			return nil, err
-		}
+	// The scrape configs, including relabel configs, are delivered to the discoverer the same way they are in
+	// production: via ApplyConfig.
+	scrapeConfigs := make([]*promconfig.ScrapeConfig, 0, len(jobNames))
+	for _, jobName := range jobNames {
+		scrapeConfigs = append(scrapeConfigs, &promconfig.ScrapeConfig{
+			JobName:        jobName,
+			ScrapeInterval: model.Duration(30 * time.Second),
+			ScrapeTimeout:  model.Duration(10 * time.Second),
+			MetricsPath:    "/metrics",
+			Scheme:         "http",
+			RelabelConfigs: relabelConfig[jobName],
+		})
+	}
+	if err := targetDiscoverer.ApplyConfig(allocatorWatcher.EventSourceConfigMap, scrapeConfigs); err != nil {
+		return nil, err
 	}
 	return targetDiscoverer, nil
 }

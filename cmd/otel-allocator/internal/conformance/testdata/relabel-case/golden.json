@@ -2,18 +2,24 @@
   {
     "discoveredLabels": {
       "__address__": "10.5.0.1:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__metrics_path__": "/metrics",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "foo": "bAr123Foo",
       "job": "case-upper-lower"
     },
     "labels": {
       "__address__": "10.5.0.1:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__metrics_path__": "/metrics",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "foo": "bAr123Foo",
       "foo_lowercase": "bar123foo",

@@ -2,19 +2,25 @@
   {
     "discoveredLabels": {
       "__address__": "10.0.0.1:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__meta_kubernetes_pod_label_app": "web",
       "__meta_kubernetes_pod_label_tier": "frontend",
       "__metrics_path__": "/metrics",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "job": "lm"
     },
     "labels": {
       "__address__": "10.0.0.1:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__metrics_path__": "/metrics",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "app": "web",
       "instance": "10.0.0.1:9100",
@@ -25,19 +31,25 @@
   {
     "discoveredLabels": {
       "__address__": "10.0.0.2:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__meta_kubernetes_pod_label_app": "web",
       "__meta_kubernetes_pod_label_tier": "frontend",
       "__metrics_path__": "/metrics",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "job": "lm"
     },
     "labels": {
       "__address__": "10.0.0.2:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__metrics_path__": "/metrics",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "app": "web",
       "instance": "10.0.0.2:9100",

@@ -2,22 +2,28 @@
   {
     "discoveredLabels": {
       "__address__": "10.6.0.1:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__metrics_path__": "/metrics",
       "__port1": "1234",
       "__port2": "5678",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "__tmp_port": "1234",
       "job": "keepequal-match"
     },
     "labels": {
       "__address__": "10.6.0.1:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__metrics_path__": "/metrics",
       "__port1": "1234",
       "__port2": "5678",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "__tmp_port": "1234",
       "instance": "10.6.0.1:9100",
@@ -27,11 +33,14 @@
   {
     "discoveredLabels": {
       "__address__": "10.6.0.2:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__metrics_path__": "/metrics",
       "__port1": "1234",
       "__port2": "5678",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "__tmp_port": "1234",
       "job": "keepequal-nomatch-drops"
@@ -41,11 +50,14 @@
   {
     "discoveredLabels": {
       "__address__": "10.6.0.3:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__metrics_path__": "/metrics",
       "__port1": "1234",
       "__port2": "5678",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "__tmp_port": "1234",
       "job": "dropequal-match-drops"
@@ -55,22 +67,28 @@
   {
     "discoveredLabels": {
       "__address__": "10.6.0.4:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__metrics_path__": "/metrics",
       "__port1": "1234",
       "__port2": "5678",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "__tmp_port": "1234",
       "job": "dropequal-nomatch"
     },
     "labels": {
       "__address__": "10.6.0.4:9100",
+      "__always_scrape_classic_histograms__": "false",
+      "__convert_classic_histograms_to_nhcb__": "false",
       "__metrics_path__": "/metrics",
       "__port1": "1234",
       "__port2": "5678",
       "__scheme__": "http",
       "__scrape_interval__": "1m",
+      "__scrape_native_histograms__": "false",
       "__scrape_timeout__": "10s",
       "__tmp_port": "1234",
       "instance": "10.6.0.4:9100",

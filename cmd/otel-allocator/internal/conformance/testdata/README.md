@@ -32,9 +32,7 @@ For every fixture the suite compares the allocator's discovery+relabel result ag
 - **keep/drop parity**: the allocator keeps a target iff Prometheus does.
 - **identity grouping**: the allocator's identity-hash partition equals Prometheus's post-relabel-label partition. This
   guards against the recurring target-identity bug class.
-- **merge fidelity**: the allocator's served pre-relabel labels equal Prometheus's `discoveredLabels` minus the scrape
-  labels it defers to the collector (`job`, `__scheme__`, `__metrics_path__`, `__scrape_interval__`,
-  `__scrape_timeout__`).
+- **merge fidelity**: the allocator's served pre-relabel labels equal Prometheus's `discoveredLabels`.
 
 ## Known divergences
 
