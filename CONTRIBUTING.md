@@ -163,7 +163,7 @@ Some suites (e.g. `tests/e2e-ta-standalone`, `tests/e2e-collector-metrics`) are 
 
 When adding e2e coverage, chainsaw is the default choice for asserting on the shape of the resources the operator generates. Write Go e2e tests when you need semantic checks — for example verifying that the right metric, with the right labels and value, made it end-to-end — which are awkward to express in chainsaw.
 
-To revert the changes made by the `make prepare-e2e` run `make reset`.
+`make prepare-e2e` and the `add-*` targets (e.g. `make add-operator-arg`) do not modify the checked-in manifests under `config/`. They write kustomize overlays to `local/kustomize/`, which git ignores, and `make deploy` builds from there. Operator arguments and RBAC rules added by the `add-*` targets are kept between runs; to remove them run `make reset`.
 
 To delete the kind cluster created by `make prepare-e2e` run `make stop-kind`.
 
@@ -359,8 +359,10 @@ When using OpenShift, the OLM is already installed.
 The following commands will generate two bundles (one for regular Kubernetes and another one for OpenShift) under `bundle/`, build an image with its contents, build and publish the operator image.
 
 ```bash
-BUNDLE_IMG=docker.io/${USER}/opentelemetry-operator-bundle:latest IMG=docker.io/${USER}/opentelemetry-operator:latest make bundle container container-push bundle-build bundle-push
+BUNDLE_IMG=docker.io/${USER}/opentelemetry-operator-bundle:latest IMG=docker.io/${USER}/opentelemetry-operator:latest BUNDLE_OPERATOR_IMG=docker.io/${USER}/opentelemetry-operator:latest make bundle container container-push bundle-build bundle-push
 ```
+
+`BUNDLE_OPERATOR_IMG` is the operator image the bundles reference. Without it, `make bundle` uses the released image for the version in `versions.txt`, which is what the checked-in bundles contain. Setting it changes the files under `bundle/`; do not commit that change.
 
 ### Install the operator
 

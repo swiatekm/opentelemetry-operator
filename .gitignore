@@ -32,14 +32,11 @@ vendor
 
 # local resources, not to be committed
 local
-config/manager/kustomization.yaml
 .vscode
 
 # test resources
 kubeconfig
 tests/_build/
-config/rbac/extra-permissions-operator/
-config/rbac/certmanager-permissions/
 .testresults
 
 # locally-built test app binaries
