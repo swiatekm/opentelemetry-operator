@@ -195,6 +195,10 @@ CRD_OPTIONS ?= "crd:generateEmbeddedObjectMeta=true,maxDescLen=0"
 BUNDLE_VARIANT ?= community
 BUNDLE_DIR = ./bundle/$(BUNDLE_VARIANT)
 MANIFESTS_DIR = config/manifests/$(BUNDLE_VARIANT)
+# Operator image referenced by the bundles. The default is the released image, which
+# is what the checked-in bundles use. It does not follow IMG, so that `make update`
+# gives the same result whatever image settings are in the environment.
+BUNDLE_OPERATOR_IMG ?= ghcr.io/open-telemetry/opentelemetry-operator/opentelemetry-operator:$(OPERATOR_VERSION)
 BUNDLE_BUILD_GEN_FLAGS ?= $(BUNDLE_GEN_FLAGS) --output-dir . --kustomize-dir ../../$(MANIFESTS_DIR)
 
 MIN_KUBERNETES_VERSION ?= 1.25.0
@@ -209,6 +213,22 @@ GO_MODULE_DIRS ?= $(shell find . -path './.*' -prune -o -name go.mod -print | se
 ## On MacOS, use gsed instead of sed, to make sed behavior
 ## consistent with Linux.
 SED ?= $(shell which gsed 2>/dev/null || which sed)
+
+## Settings that differ between invocations (operator image, extra operator arguments,
+## extra RBAC rules) are never written to the checked-in files under config/. They go
+## into kustomize overlays generated under OVERLAY_DIR, which git ignores.
+OVERLAY_DIR := local/kustomize
+## Kustomize component holding the operator arguments and RBAC rules added by the add-*
+## targets. The deploy targets apply it. It is kept until `make reset`.
+OVERLAY_SETTINGS_DIR := $(OVERLAY_DIR)/settings
+
+## kustomize-overlay writes a kustomization to $(OVERLAY_DIR)/$(1) that builds the
+## directory $(2), given relative to the repository root, with the image $(3) set.
+## The ../../../ prefix is the path from an overlay back to the repository root.
+define kustomize-overlay
+rm -rf $(OVERLAY_DIR)/$(1) && mkdir -p $(OVERLAY_DIR)/$(1)
+cd $(OVERLAY_DIR)/$(1) && $(KUSTOMIZE) create --resources ../../../$(2) && $(KUSTOMIZE) edit set image $(3)
+endef
 
 .DEFAULT_GOAL := help
 # Show this help message
@@ -241,12 +261,10 @@ help:
 ##@ PR
 # Verify generated code, manifests, bundles, and API docs are up to date
 .PHONY: ensure-update-is-noop 
-ensure-update-is-noop: VERSION=$(OPERATOR_VERSION)
-ensure-update-is-noop: DOCKER_USER=open-telemetry
-ensure-update-is-noop: set-image-controller update
-	@git diff -s --exit-code apis/**/zz_generated.*.go || (echo "Build failed: a model has been changed but the generated resources aren't up to date. Run 'make generate' and update your PR." && exit 1)
-	@git diff -s --exit-code bundle config || (echo "Build failed: the bundle, config files has been changed but the generated bundle, config files aren't up to date. Run 'make bundle' and update your PR." && git diff && exit 1)
-	@git diff -s --exit-code docs/api || (echo "Build failed: a model has been changed but the generated docs/api/*.md files aren't up to date. Run 'make api-docs' and update your PR." && git diff && exit 1)
+ensure-update-is-noop: update
+	@git diff -s --exit-code apis/**/zz_generated.*.go || (echo "Build failed: a model has been changed but the generated resources aren't up to date. Run 'make update' and update your PR." && exit 1)
+	@git diff -s --exit-code bundle config || (echo "Build failed: the bundle, config files has been changed but the generated bundle, config files aren't up to date. Run 'make update' and update your PR." && git diff && exit 1)
+	@git diff -s --exit-code docs/api || (echo "Build failed: a model has been changed but the generated docs/api/*.md files aren't up to date. Run 'make update' and update your PR." && git diff && exit 1)
 	@git diff -s --exit-code tests docs/auto-instrumentation || (echo "Build failed: Instrumentation example images are out of date. Run 'make update-example-images' and update your PR." && git diff && exit 1)
 
 # Build manager binary
@@ -258,9 +276,9 @@ all: manager targetallocator operator-opamp-bridge
 .PHONY: ci
 ci: generate fmt vet test ensure-update-is-noop
 
-# Update manifests
+# Regenerate all checked-in generated files: code, manifests, bundles, and API docs
 .PHONY: update
-update: generate manifests set-related-images bundle api-docs update-example-images reset
+update: generate manifests set-related-images bundle api-docs update-example-images
 
 # Build manager binary
 .PHONY: manager
@@ -298,11 +316,22 @@ uninstall: manifests kustomize
 	$(KUSTOMIZE) build config/crd | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
 
 ##@ Operator Configuration
-# Set the controller image parameters
-.PHONY: set-image-controller
-set-image-controller: manifests kustomize
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	cd config/overlays/openshift && $(KUSTOMIZE) edit set image controller=${IMG}
+$(OVERLAY_SETTINGS_DIR)/kustomization.yaml:
+	mkdir -p $(@D)
+	printf 'apiVersion: kustomize.config.k8s.io/v1alpha1\nkind: Component\n' > $@
+
+# Generate the overlays of config/default and config/no-crds used by the deploy
+# targets: the operator image is set to IMG, and the settings component is applied
+# if an add-* target has created it.
+.PHONY: overlay-default overlay-no-crds
+overlay-default overlay-no-crds: overlay-%: manifests kustomize
+	$(call kustomize-overlay,$*,config/$*,controller=$(IMG))
+	if [ -f $(OVERLAY_SETTINGS_DIR)/kustomization.yaml ]; then cd $(OVERLAY_DIR)/$* && $(KUSTOMIZE) edit add component ../settings; fi
+
+# Remove the generated overlays, including everything added by the add-* targets
+.PHONY: reset
+reset:
+	rm -rf $(OVERLAY_DIR)
 
 # Update RELATED_IMAGE env vars in deployment manifests from versions.txt
 .PHONY: set-related-images
@@ -313,8 +342,8 @@ set-related-images:
 # Add a custom argument to the operator deployment
 .PHONY: add-operator-arg
 add-operator-arg: PATCH = [{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"$(OPERATOR_ARG)"}]
-add-operator-arg: manifests kustomize
-	cd config/manager && $(KUSTOMIZE) edit add patch --kind Deployment --patch '$(PATCH)'
+add-operator-arg: kustomize $(OVERLAY_SETTINGS_DIR)/kustomization.yaml
+	cd $(OVERLAY_SETTINGS_DIR) && $(KUSTOMIZE) edit add patch --kind Deployment --name controller-manager --patch '$(PATCH)'
 
 # Set the target allocator image used by the operator
 .PHONY: add-image-targetallocator
@@ -354,51 +383,36 @@ add-image-opampbridge:
 
 # Add extra RBAC permissions to operator for e2e tests
 .PHONY: add-rbac-permissions-to-operator
-add-rbac-permissions-to-operator: manifests kustomize
+add-rbac-permissions-to-operator: kustomize $(OVERLAY_SETTINGS_DIR)/kustomization.yaml
 	# Kustomize only allows patches in the folder where the kustomization is located
-	# This folder is ignored by .gitignore
-	mkdir -p config/rbac/extra-permissions-operator
-	cp -r tests/e2e-automatic-rbac/extra-permissions-operator/* config/rbac/extra-permissions-operator
-	cd config/rbac && $(KUSTOMIZE) edit add patch --kind ClusterRole --name manager-role --path extra-permissions-operator/clusterresourcequotas.yaml
-	cd config/rbac && $(KUSTOMIZE) edit add patch --kind ClusterRole --name manager-role --path extra-permissions-operator/cronjobs.yaml
-	cd config/rbac && $(KUSTOMIZE) edit add patch --kind ClusterRole --name manager-role --path extra-permissions-operator/daemonsets.yaml
-	cd config/rbac && $(KUSTOMIZE) edit add patch --kind ClusterRole --name manager-role --path extra-permissions-operator/events.yaml
-	cd config/rbac && $(KUSTOMIZE) edit add patch --kind ClusterRole --name manager-role --path extra-permissions-operator/extensions.yaml
-	cd config/rbac && $(KUSTOMIZE) edit add patch --kind ClusterRole --name manager-role --path extra-permissions-operator/namespaces.yaml
-	cd config/rbac && $(KUSTOMIZE) edit add patch --kind ClusterRole --name manager-role --path extra-permissions-operator/namespaces-status.yaml
-	cd config/rbac && $(KUSTOMIZE) edit add patch --kind ClusterRole --name manager-role --path extra-permissions-operator/nodes.yaml
-	cd config/rbac && $(KUSTOMIZE) edit add patch --kind ClusterRole --name manager-role --path extra-permissions-operator/nodes-proxy.yaml
-	cd config/rbac && $(KUSTOMIZE) edit add patch --kind ClusterRole --name manager-role --path extra-permissions-operator/nodes-spec.yaml
-	cd config/rbac && $(KUSTOMIZE) edit add patch --kind ClusterRole --name manager-role --path extra-permissions-operator/pod-status.yaml
-	cd config/rbac && $(KUSTOMIZE) edit add patch --kind ClusterRole --name manager-role --path extra-permissions-operator/rbac.yaml
-	cd config/rbac && $(KUSTOMIZE) edit add patch --kind ClusterRole --name manager-role --path extra-permissions-operator/replicaset.yaml
-	cd config/rbac && $(KUSTOMIZE) edit add patch --kind ClusterRole --name manager-role --path extra-permissions-operator/replicationcontrollers.yaml
-	cd config/rbac && $(KUSTOMIZE) edit add patch --kind ClusterRole --name manager-role --path extra-permissions-operator/resourcequotas.yaml
-	cd config/rbac && $(KUSTOMIZE) edit add patch --kind ClusterRole --name manager-role --path extra-permissions-operator/leases.yaml
+	cp -r tests/e2e-automatic-rbac/extra-permissions-operator $(OVERLAY_SETTINGS_DIR)/
+	cd $(OVERLAY_SETTINGS_DIR) && for patch in extra-permissions-operator/*.yaml; do \
+		$(KUSTOMIZE) edit add patch --kind ClusterRole --name manager-role --path $$patch || exit 1; \
+	done
 
 ##@ Deploy
 # Deploy controller in the current Kubernetes context, configured in ~/.kube/config
 .PHONY: deploy
-deploy: install-gateway-api-crds set-image-controller
-	$(KUSTOMIZE) build config/default | kubectl apply -f -
+deploy: install-gateway-api-crds overlay-default
+	$(KUSTOMIZE) build $(OVERLAY_DIR)/default | kubectl apply -f -
 	kubectl rollout status deployment/opentelemetry-operator-controller-manager -n opentelemetry-operator-system --timeout=300s
 
 # Undeploy controller in the current Kubernetes context, configured in ~/.kube/config
 .PHONY: undeploy
-undeploy: set-image-controller
-	$(KUSTOMIZE) build config/default | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
+undeploy: overlay-default
+	$(KUSTOMIZE) build $(OVERLAY_DIR)/default | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
 
 ##@ Deploy without CRDs
 # Deploy controller in the current Kubernetes context, configured in ~/.kube/config
 .PHONY: deploy-no-crds
-deploy-no-crds: set-image-controller
-	$(KUSTOMIZE) build config/no-crds | INSTRUMENTATION_JAVA_IMG=$(INSTRUMENTATION_JAVA_IMG) envsubst | kubectl apply -f -
+deploy-no-crds: overlay-no-crds
+	$(KUSTOMIZE) build $(OVERLAY_DIR)/no-crds | INSTRUMENTATION_JAVA_IMG=$(INSTRUMENTATION_JAVA_IMG) envsubst | kubectl apply -f -
 	kubectl rollout status deployment/opentelemetry-operator-controller-manager -n opentelemetry-operator-system --timeout=300s
 
 # Undeploy controller in the current Kubernetes context, configured in ~/.kube/config
 .PHONY: undeploy-no-crds
-undeploy-no-crds: set-image-controller
-	$(KUSTOMIZE) build config/no-crds | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
+undeploy-no-crds: overlay-no-crds
+	$(KUSTOMIZE) build $(OVERLAY_DIR)/no-crds | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
 
 ##@ Standalone OpAMP Bridge (no operator / CRDs required)
 
@@ -408,8 +422,8 @@ STANDALONE_BRIDGE_MANIFESTS ?= cmd/operator-opamp-bridge/manifests/standalone
 # Does not require the operator, CRDs, or cert-manager.
 .PHONY: deploy-standalone-bridge
 deploy-standalone-bridge: kustomize
-	cd $(STANDALONE_BRIDGE_MANIFESTS) && $(KUSTOMIZE) edit set image operator-opamp-bridge=${OPERATOROPAMPBRIDGE_IMG}
-	$(KUSTOMIZE) build $(STANDALONE_BRIDGE_MANIFESTS) | kubectl apply -f -
+	$(call kustomize-overlay,standalone-bridge,$(STANDALONE_BRIDGE_MANIFESTS),operator-opamp-bridge=${OPERATOROPAMPBRIDGE_IMG})
+	$(KUSTOMIZE) build $(OVERLAY_DIR)/standalone-bridge | kubectl apply -f -
 	kubectl rollout status deployment/otel-opamp-bridge-standalone -n opentelemetry-opamp-bridge --timeout=120s
 
 # Undeploy the standalone OpAMP bridge from the current Kubernetes context.
@@ -424,10 +438,12 @@ deploy-standalone-bridge-kind: load-image-operator-opamp-bridge deploy-standalon
 
 # Generates the released manifests
 .PHONY: release-artifacts
-release-artifacts: set-image-controller
+release-artifacts: manifests kustomize
 	mkdir -p dist
-	$(KUSTOMIZE) build config/default -o dist/opentelemetry-operator.yaml
-	$(KUSTOMIZE) build config/overlays/openshift -o dist/opentelemetry-operator-openshift.yaml
+	$(call kustomize-overlay,release,config/default,controller=$(IMG))
+	$(KUSTOMIZE) build $(OVERLAY_DIR)/release -o dist/opentelemetry-operator.yaml
+	$(call kustomize-overlay,release-openshift,config/overlays/openshift,controller=$(IMG))
+	$(KUSTOMIZE) build $(OVERLAY_DIR)/release-openshift -o dist/opentelemetry-operator-openshift.yaml
 
 # Generate manifests e.g. CRD, RBAC etc.
 # apis/ is a nested Go module, which the "./..." pattern does not descend into, so
@@ -629,11 +645,10 @@ e2e-targetallocator-cr: chainsaw
 
 # Add cert-manager permissions for mTLS testing
 .PHONY: add-certmanager-permissions
-add-certmanager-permissions: 
+add-certmanager-permissions: kustomize $(OVERLAY_SETTINGS_DIR)/kustomization.yaml
 	# Kustomize only allows patches in the folder where the kustomization is located
-	# This folder is ignored by .gitignore
-	cp -r tests/e2e-ta-collector-mtls/certmanager-permissions config/rbac/certmanager-permissions
-	cd config/rbac && $(KUSTOMIZE) edit add patch --kind ClusterRole --name manager-role --path certmanager-permissions/certmanager.yaml
+	cp -r tests/e2e-ta-collector-mtls/certmanager-permissions $(OVERLAY_SETTINGS_DIR)/
+	cd $(OVERLAY_SETTINGS_DIR) && $(KUSTOMIZE) edit add patch --kind ClusterRole --name manager-role --path certmanager-permissions/certmanager.yaml
 
 # Target allocator collector mTLS end-to-tests
 .PHONY: e2e-ta-collector-mtls
@@ -707,11 +722,11 @@ e2e-instrumentation-go e2e-instrumentation-go-default: gotestsum
 
 # Prepare environment for e2e tests
 .PHONY: prepare-e2e
-prepare-e2e: chainsaw set-image-controller add-image-targetallocator add-image-opampbridge start-kind cert-manager install-metrics-server install-gateway-api-crds install-targetallocator-prometheus-crds load-image-all deploy
+prepare-e2e: chainsaw add-image-targetallocator add-image-opampbridge start-kind cert-manager install-metrics-server install-gateway-api-crds install-targetallocator-prometheus-crds load-image-all deploy
 	@mkdir -p ./.testresults/e2e
 
 .PHONY: prepare-e2e-no-crds
-prepare-e2e-no-crds: chainsaw set-image-controller add-image-targetallocator add-image-opampbridge start-kind cert-manager install-metrics-server install-targetallocator-prometheus-crds load-image-all deploy-no-crds
+prepare-e2e-no-crds: chainsaw add-image-targetallocator add-image-opampbridge start-kind cert-manager install-metrics-server install-targetallocator-prometheus-crds load-image-all deploy-no-crds
 	@mkdir -p ./.testresults/e2e
 
 .PHONY: prepare-e2e-clusterobservability
@@ -1077,13 +1092,14 @@ operator-sdk: $(LOCALBIN)
 	}
 
 ##@ Bundle
-# Generate bundle manifests and metadata, then validate generated files.
+# Generate bundle manifests and metadata for BUNDLE_VARIANT, then validate generated files.
 .PHONY: generate-bundle
-generate-bundle: kustomize operator-sdk manifests set-image-controller api-docs
-	@$(SED_INPLACE) 's/minKubeVersion: .*/minKubeVersion: $(MIN_KUBERNETES_VERSION)/' config/manifests/$(BUNDLE_VARIANT)/bases/opentelemetry-operator.clusterserviceversion.yaml
+generate-bundle: kustomize operator-sdk manifests
+	@$(SED_INPLACE) 's/minKubeVersion: .*/minKubeVersion: $(MIN_KUBERNETES_VERSION)/' $(MANIFESTS_DIR)/bases/opentelemetry-operator.clusterserviceversion.yaml
 
 	$(OPERATOR_SDK) generate kustomize manifests -q --input-dir $(MANIFESTS_DIR) --output-dir $(MANIFESTS_DIR)
-	cd $(BUNDLE_DIR) && cp ../../PROJECT . && $(KUSTOMIZE) build ../../$(MANIFESTS_DIR) | $(OPERATOR_SDK) generate bundle $(BUNDLE_BUILD_GEN_FLAGS) && rm PROJECT
+	$(call kustomize-overlay,bundle-$(BUNDLE_VARIANT),$(MANIFESTS_DIR),controller=$(BUNDLE_OPERATOR_IMG))
+	cd $(BUNDLE_DIR) && cp ../../PROJECT . && $(KUSTOMIZE) build ../../$(OVERLAY_DIR)/bundle-$(BUNDLE_VARIANT) | $(OPERATOR_SDK) generate bundle $(BUNDLE_BUILD_GEN_FLAGS) && rm PROJECT
 
 	# Workaround for https://github.com/operator-framework/operator-sdk/issues/4992
 	echo "" >> bundle/$(BUNDLE_VARIANT)/bundle.Dockerfile
@@ -1097,32 +1113,8 @@ generate-bundle: kustomize operator-sdk manifests set-image-controller api-docs
 # Generate bundle for both community and openshift variants
 .PHONY: bundle
 bundle:
-	BUNDLE_VARIANT=community VERSION=$(VERSION) $(MAKE) generate-bundle
-	BUNDLE_VARIANT=openshift VERSION=$(VERSION) $(MAKE) generate-bundle
-
-
-# Reset bundle configuration to defaults
-.PHONY: reset
-reset: kustomize operator-sdk manifests
-	$(MAKE) VERSION=${OPERATOR_VERSION} set-image-controller
-	$(MAKE) set-related-images
-	$(OPERATOR_SDK)  generate kustomize manifests -q --input-dir config/manifests/community --output-dir config/manifests/community
-	$(OPERATOR_SDK)  generate kustomize manifests -q --input-dir config/manifests/openshift --output-dir config/manifests/openshift
-
-	$(KUSTOMIZE) build config/manifests/community | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS) --kustomize-dir config/manifests/community --output-dir bundle/community
-	$(KUSTOMIZE) build config/manifests/openshift |$(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS) --kustomize-dir config/manifests/openshift --output-dir bundle/openshift
-
-	# Workaround for https://github.com/operator-framework/operator-sdk/issues/4992
-	echo "" >> bundle/community/metadata/annotations.yaml
-	echo "  com.redhat.openshift.versions: v$(MIN_OPENSHIFT_VERSION)" >> bundle/community/metadata/annotations.yaml
-	echo "" >> bundle/openshift/metadata/annotations.yaml
-	echo "  com.redhat.openshift.versions: v$(MIN_OPENSHIFT_VERSION)" >> bundle/openshift/metadata/annotations.yaml
-
-	$(OPERATOR_SDK) bundle validate ./bundle/community
-	$(OPERATOR_SDK) bundle validate ./bundle/openshift
-	rm bundle.Dockerfile
-	git checkout config/manager/kustomization.yaml config/overlays/openshift/kustomization.yaml
-	./hack/ignore-createdAt-bundle.sh
+	$(MAKE) generate-bundle BUNDLE_VARIANT=community
+	$(MAKE) generate-bundle BUNDLE_VARIANT=openshift
 
 # Build the bundle image, used only for local dev purposes
 .PHONY: bundle-build

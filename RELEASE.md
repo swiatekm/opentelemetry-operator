@@ -9,7 +9,7 @@ Steps to release a new version of the OpenTelemetry Operator:
       - OpenTelemetry Collector should be the latest collector version. The `major.minor` should typically match, with the patch portion being possibly different.
       - The `autoinstrumentation-*` versions should match the latest supported versions in `autoinstrumentation/`.
    1. Check if the compatible OpenShift versions are updated in the `Makefile`.
-   1. Update the bundle by running `make bundle reset VERSION=$VERSION`.
+   1. Update the generated files, including the bundle, by running `make update`.
    1. Change the compatibility matrix in the [compatibility doc](./docs/getting-started/compatibility.md). Remove the oldest entry.
       - Use the OpenTelemetry Operator version to be released
       - Update the supported Kubernetes version. It's defined in [CI to run e2e tests](.github/workflows/e2e-reusable.yaml).
