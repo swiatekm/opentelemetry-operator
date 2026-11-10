@@ -1,0 +1,6 @@
+# Applied to every CRD through the target in kustomization.yaml; the name is not used.
+$patch: delete
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: all

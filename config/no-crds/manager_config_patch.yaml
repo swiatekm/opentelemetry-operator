@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+spec:
+  template:
+    spec:
+      containers:
+      - name: manager
+        command:
+          - /manager
+          - --config-file
+          - /etc/config.yaml
+        volumeMounts:
+        - mountPath: /etc/config.yaml
+          name: config
+          subPath: config.yaml
+      volumes:
+      - name: config
+        configMap:
+          name: opentelemetry-operator-manager-config

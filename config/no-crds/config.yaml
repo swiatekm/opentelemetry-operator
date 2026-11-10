@@ -2,7 +2,11 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: manager-config
+  # config/default sets the name prefix, namespace and label on its own resources only.
+  name: opentelemetry-operator-manager-config
+  namespace: opentelemetry-operator-system
+  labels:
+    app.kubernetes.io/name: opentelemetry-operator
 data:
   config.yaml: |
     ignore-missing-collector-crds: true
