@@ -8,8 +8,10 @@
 # certificate is not ready in time, renew it once to request it again now.
 set -euo pipefail
 
-NAMESPACE="${NAMESPACE:-opentelemetry-operator-system}"
-CERTIFICATE="${CERTIFICATE:-opentelemetry-operator-serving-cert}"
+# Not read from the environment: chainsaw sets NAMESPACE to the test namespace
+# when a test runs make deploy.
+NAMESPACE=opentelemetry-operator-system
+CERTIFICATE=opentelemetry-operator-serving-cert
 CMCTL="${CMCTL:-cmctl}"
 
 if kubectl wait --for=condition=Ready "certificate/${CERTIFICATE}" -n "${NAMESPACE}" --timeout=60s; then
