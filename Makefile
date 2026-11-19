@@ -380,8 +380,9 @@ add-rbac-permissions-to-operator: manifests kustomize
 ##@ Deploy
 # Deploy controller in the current Kubernetes context, configured in ~/.kube/config
 .PHONY: deploy
-deploy: install-gateway-api-crds set-image-controller
+deploy: install-gateway-api-crds set-image-controller cmctl
 	$(KUSTOMIZE) build config/default | kubectl apply -f -
+	CMCTL=$(CMCTL) ./hack/wait-for-serving-cert.sh
 	kubectl rollout status deployment/opentelemetry-operator-controller-manager -n opentelemetry-operator-system --timeout=300s
 
 # Undeploy controller in the current Kubernetes context, configured in ~/.kube/config
@@ -392,8 +393,9 @@ undeploy: set-image-controller
 ##@ Deploy without CRDs
 # Deploy controller in the current Kubernetes context, configured in ~/.kube/config
 .PHONY: deploy-no-crds
-deploy-no-crds: set-image-controller
+deploy-no-crds: set-image-controller cmctl
 	$(KUSTOMIZE) build config/no-crds | INSTRUMENTATION_JAVA_IMG=$(INSTRUMENTATION_JAVA_IMG) envsubst | kubectl apply -f -
+	CMCTL=$(CMCTL) ./hack/wait-for-serving-cert.sh
 	kubectl rollout status deployment/opentelemetry-operator-controller-manager -n opentelemetry-operator-system --timeout=300s
 
 # Undeploy controller in the current Kubernetes context, configured in ~/.kube/config
